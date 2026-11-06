@@ -54,7 +54,10 @@ impl SshTransport {
 impl DeviceTransport for SshTransport {
     async fn connect(&mut self) -> Result<(), Error> {
         let config = {
-            let guard = self.inner.lock().map_err(|e| Error::Transport(e.to_string()))?;
+            let guard = self
+                .inner
+                .lock()
+                .map_err(|e| Error::Transport(e.to_string()))?;
             guard.config.clone()
         };
 
@@ -62,21 +65,21 @@ impl DeviceTransport for SshTransport {
             let addr = format!("{}:{}", config.host, config.port);
             tracing::debug!(%addr, "ssh: connecting tcp");
             let stream = std::net::TcpStream::connect_timeout(
-                &addr
-                    .parse::<std::net::SocketAddr>()
-                    .unwrap_or_else(|_| {
-                        format!("{}:{}", config.host, config.port)
-                            .parse::<std::net::SocketAddr>()
-                            .unwrap()
-                    }),
+                &addr.parse::<std::net::SocketAddr>().unwrap_or_else(|_| {
+                    format!("{}:{}", config.host, config.port)
+                        .parse::<std::net::SocketAddr>()
+                        .unwrap()
+                }),
                 config.timeout,
             )
             .map_err(|e| Error::Transport(format!("tcp connect: {}", e)))?;
 
-            let mut sess = ssh2::Session::new().map_err(|e| Error::Transport(format!("ssh2 new: {}", e)))?;
+            let mut sess =
+                ssh2::Session::new().map_err(|e| Error::Transport(format!("ssh2 new: {}", e)))?;
             sess.set_tcp_stream(stream);
             sess.set_blocking(true);
-            sess.handshake().map_err(|e| Error::Transport(format!("ssh handshake: {}", e)))?;
+            sess.handshake()
+                .map_err(|e| Error::Transport(format!("ssh handshake: {}", e)))?;
 
             // Host key verification.
             verify_host_key(&sess, &config)?;
@@ -90,11 +93,15 @@ impl DeviceTransport for SshTransport {
             }
 
             // Open a shell channel for interactive CLI.
-            let mut channel = sess.channel_session().map_err(|e| Error::Transport(format!("channel: {}", e)))?;
+            let mut channel = sess
+                .channel_session()
+                .map_err(|e| Error::Transport(format!("channel: {}", e)))?;
             channel
                 .request_pty("vt100", None, None)
                 .map_err(|e| Error::Transport(format!("pty: {}", e)))?;
-            channel.shell().map_err(|e| Error::Transport(format!("shell: {}", e)))?;
+            channel
+                .shell()
+                .map_err(|e| Error::Transport(format!("shell: {}", e)))?;
 
             inner.session = Some(sess);
             inner.channel = Some(channel);
@@ -131,7 +138,8 @@ impl DeviceTransport for SshTransport {
             let ch = inner.channel.as_mut().ok_or_else(|| Error::NotConnected)?;
             ch.write_all(data.as_bytes())
                 .map_err(|e| Error::Transport(format!("ssh write: {}", e)))?;
-            ch.flush().map_err(|e| Error::Transport(format!("ssh flush: {}", e)))?;
+            ch.flush()
+                .map_err(|e| Error::Transport(format!("ssh flush: {}", e)))?;
             Ok(())
         })
         .await
@@ -143,7 +151,8 @@ impl DeviceTransport for SshTransport {
             let ch = inner.channel.as_mut().ok_or_else(|| Error::NotConnected)?;
             ch.write_all(&bytes)
                 .map_err(|e| Error::Transport(format!("ssh write: {}", e)))?;
-            ch.flush().map_err(|e| Error::Transport(format!("ssh flush: {}", e)))?;
+            ch.flush()
+                .map_err(|e| Error::Transport(format!("ssh flush: {}", e)))?;
             Ok(())
         })
         .await
@@ -185,10 +194,7 @@ impl DeviceTransport for SshTransport {
     }
 
     fn is_connected(&self) -> bool {
-        self.inner
-            .try_lock()
-            .map(|g| g.connected)
-            .unwrap_or(false)
+        self.inner.try_lock().map(|g| g.connected).unwrap_or(false)
     }
 
     fn transport_type(&self) -> TransportType {
@@ -280,7 +286,12 @@ fn verify_host_key(sess: &ssh2::Session, config: &ConnectionConfig) -> Result<()
                     key_type = %key_type_str,
                     "ssh: accepting new host key"
                 );
-                append_known_host(&known_hosts_path, config.host.as_str(), key_type_str, &key_hex)?;
+                append_known_host(
+                    &known_hosts_path,
+                    config.host.as_str(),
+                    key_type_str,
+                    &key_hex,
+                )?;
             }
             Ok(())
         }
@@ -292,7 +303,12 @@ fn verify_host_key(sess: &ssh2::Session, config: &ConnectionConfig) -> Result<()
                     key = %key_hex,
                     "ssh: unknown host key, accepting (warn)"
                 );
-                append_known_host(&known_hosts_path, config.host.as_str(), key_type_str, &key_hex)?;
+                append_known_host(
+                    &known_hosts_path,
+                    config.host.as_str(),
+                    key_type_str,
+                    &key_hex,
+                )?;
             }
             Ok(())
         }

@@ -1,11 +1,11 @@
 //! Connection configuration for device sessions.
 
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use std::path::PathBuf;
+use std::time::Duration;
 
-use directories::ProjectDirs;
 use crate::transport::TransportType;
+use directories::ProjectDirs;
 
 /// Policy for handling SSH host keys.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

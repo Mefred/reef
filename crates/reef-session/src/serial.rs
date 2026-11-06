@@ -61,7 +61,10 @@ impl DeviceTransport for SerialTransport {
             .write_all(data.as_bytes())
             .await
             .map_err(|e| Error::Transport(format!("serial write: {}", e)))?;
-        stream.flush().await.map_err(|e| Error::Transport(format!("serial flush: {}", e)))?;
+        stream
+            .flush()
+            .await
+            .map_err(|e| Error::Transport(format!("serial flush: {}", e)))?;
         Ok(())
     }
 
@@ -71,7 +74,10 @@ impl DeviceTransport for SerialTransport {
             .write_all(bytes)
             .await
             .map_err(|e| Error::Transport(format!("serial write: {}", e)))?;
-        stream.flush().await.map_err(|e| Error::Transport(format!("serial flush: {}", e)))?;
+        stream
+            .flush()
+            .await
+            .map_err(|e| Error::Transport(format!("serial flush: {}", e)))?;
         Ok(())
     }
 

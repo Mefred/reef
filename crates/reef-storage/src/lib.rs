@@ -100,10 +100,15 @@ impl Storage {
 
     /// Save a device connection profile.
     pub fn save_profile(&self, profile: &DeviceProfile) -> Result<(), Error> {
-        let path = self.data_dir.join("profiles").join(format!("{}.json", profile.id));
-        let json = serde_json::to_string_pretty(profile).map_err(|e| Error::Serialization(e.to_string()))?;
+        let path = self
+            .data_dir
+            .join("profiles")
+            .join(format!("{}.json", profile.id));
+        let json = serde_json::to_string_pretty(profile)
+            .map_err(|e| Error::Serialization(e.to_string()))?;
         let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
-        file.write_all(json.as_bytes()).map_err(|e| Error::Io(e.to_string()))?;
+        file.write_all(json.as_bytes())
+            .map_err(|e| Error::Io(e.to_string()))?;
         Ok(())
     }
 
@@ -133,9 +138,11 @@ impl Storage {
             .data_dir
             .join("backups")
             .join(format!("{}.json", backup.id));
-        let json = serde_json::to_string_pretty(backup).map_err(|e| Error::Serialization(e.to_string()))?;
+        let json = serde_json::to_string_pretty(backup)
+            .map_err(|e| Error::Serialization(e.to_string()))?;
         let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
-        file.write_all(json.as_bytes()).map_err(|e| Error::Io(e.to_string()))?;
+        file.write_all(json.as_bytes())
+            .map_err(|e| Error::Io(e.to_string()))?;
         Ok(())
     }
 
@@ -163,17 +170,25 @@ impl Storage {
 
     /// Get a backup by ID.
     pub fn get_backup(&self, backup_id: &str) -> Result<ConfigBackup, Error> {
-        let path = self.data_dir.join("backups").join(format!("{}.json", backup_id));
+        let path = self
+            .data_dir
+            .join("backups")
+            .join(format!("{}.json", backup_id));
         let data = fs::read_to_string(&path).map_err(|_| Error::NotFound(backup_id.to_string()))?;
         serde_json::from_str(&data).map_err(|e| Error::Serialization(e.to_string()))
     }
 
     /// Record a change in the history.
     pub fn record_change(&self, record: &ChangeRecord) -> Result<(), Error> {
-        let path = self.data_dir.join("history").join(format!("{}.json", record.id));
-        let json = serde_json::to_string_pretty(record).map_err(|e| Error::Serialization(e.to_string()))?;
+        let path = self
+            .data_dir
+            .join("history")
+            .join(format!("{}.json", record.id));
+        let json = serde_json::to_string_pretty(record)
+            .map_err(|e| Error::Serialization(e.to_string()))?;
         let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
-        file.write_all(json.as_bytes()).map_err(|e| Error::Io(e.to_string()))?;
+        file.write_all(json.as_bytes())
+            .map_err(|e| Error::Io(e.to_string()))?;
         Ok(())
     }
 

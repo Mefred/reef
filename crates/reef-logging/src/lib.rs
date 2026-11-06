@@ -13,8 +13,8 @@ use tracing_subscriber::{fmt, EnvFilter};
 /// to `reef=info,warn` if unset. Safe to call multiple times; subsequent calls
 /// are no-ops once a subscriber is set.
 pub fn init() -> Result<(), tracing_subscriber::filter::ParseError> {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("reef=info,warn"));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("reef=info,warn"));
 
     fmt::fmt()
         .with_env_filter(filter)

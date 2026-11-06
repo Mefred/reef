@@ -3,9 +3,7 @@
 //! The change set is transport-independent and serializable for the GUI diff
 //! preview.
 
-use crate::model::{
-    AclConfig, DhcpPool, InterfaceConfig, StaticRoute, VlanConfig, DeviceConfig,
-};
+use crate::model::{AclConfig, DeviceConfig, DhcpPool, InterfaceConfig, StaticRoute, VlanConfig};
 use std::collections::HashMap;
 
 /// Operation for a single config element.
@@ -101,9 +99,11 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
             None => cs
                 .interface_changes
                 .push((name.clone(), ChangeOp::Add, None)),
-            Some(current_iface) if current_iface != desired_iface => cs
-                .interface_changes
-                .push((name.clone(), ChangeOp::Modify, current_iface.ipv4.clone())),
+            Some(current_iface) if current_iface != desired_iface => cs.interface_changes.push((
+                name.clone(),
+                ChangeOp::Modify,
+                current_iface.ipv4.clone(),
+            )),
             Some(_) => cs
                 .interface_changes
                 .push((name.clone(), ChangeOp::NoChange, None)),
@@ -111,8 +111,11 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
     }
     for name in current.interfaces.keys() {
         if !desired.interfaces.contains_key(name) {
-            cs.interface_changes
-                .push((name.clone(), ChangeOp::Remove, current.interfaces.get(name).and_then(|i| i.ipv4.clone())));
+            cs.interface_changes.push((
+                name.clone(),
+                ChangeOp::Remove,
+                current.interfaces.get(name).and_then(|i| i.ipv4.clone()),
+            ));
         }
     }
 
@@ -254,7 +257,9 @@ mod tests {
     #[test]
     fn plan_detects_removed_interface() {
         let mut current = DeviceConfig::default();
-        current.interfaces.insert("Loopback0".to_string(), InterfaceConfig::default());
+        current
+            .interfaces
+            .insert("Loopback0".to_string(), InterfaceConfig::default());
         let desired = DeviceConfig::default();
         let cs = plan(&current, &desired);
         assert!(matches!(cs.interface_changes[0].1, ChangeOp::Remove));

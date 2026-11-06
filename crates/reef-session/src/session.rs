@@ -48,10 +48,15 @@ impl<T: DeviceTransport> Session<T> {
     /// Perform login authentication (username/password) for transports that require it.
     async fn perform_login(&mut self) -> Result<(), Error> {
         // Read the initial banner and look for a username prompt.
-        let out = self.transport.read_available(Duration::from_secs(5)).await?;
+        let out = self
+            .transport
+            .read_available(Duration::from_secs(5))
+            .await?;
 
         // Check if we're already at a prompt (some devices don't require login)
-        if detect(&out).map_or(false, |p| matches!(p.mode, PromptMode::UserExec | PromptMode::PrivilegedExec)) {
+        if detect(&out).map_or(false, |p| {
+            matches!(p.mode, PromptMode::UserExec | PromptMode::PrivilegedExec)
+        }) {
             return Ok(());
         }
 
@@ -60,13 +65,17 @@ impl<T: DeviceTransport> Session<T> {
             if self.config.username.is_empty() {
                 return Err(Error::AuthFailed);
             }
-            self.transport.send(format!("{}\r\n", self.config.username).as_str()).await?;
+            self.transport
+                .send(format!("{}\r\n", self.config.username).as_str())
+                .await?;
             let out2 = self.read_until_prompt().await?;
             if out2.to_lowercase().contains("password:") {
                 if self.config.password.is_none() {
                     return Err(Error::AuthFailed);
                 }
-                self.transport.send(format!("{}\r\n", self.config.password.as_ref().unwrap()).as_str()).await?;
+                self.transport
+                    .send(format!("{}\r\n", self.config.password.as_ref().unwrap()).as_str())
+                    .await?;
                 let _ = self.read_until_prompt().await?;
             }
         }
@@ -137,7 +146,10 @@ impl<T: DeviceTransport> Session<T> {
             PromptMode::Unknown(_) => "#",
         };
 
-        let output = self.transport.read_until(expect, Duration::from_secs(10)).await?;
+        let output = self
+            .transport
+            .read_until(expect, Duration::from_secs(10))
+            .await?;
         Ok(output)
     }
 
@@ -149,7 +161,10 @@ impl<T: DeviceTransport> Session<T> {
 
     /// Refresh the detected prompt mode by reading available output.
     async fn refresh_prompt(&mut self) -> Result<(), Error> {
-        let out = self.transport.read_available(Duration::from_millis(300)).await?;
+        let out = self
+            .transport
+            .read_available(Duration::from_millis(300))
+            .await?;
         for line in out.lines() {
             if let Some(p) = detect(line) {
                 self.current_mode = p.mode.clone();
@@ -172,10 +187,12 @@ impl<T: DeviceTransport> Session<T> {
             return Ok(());
         }
         let out = self.send_and_read("enable\r\n").await?;
-        let is_password_prompt =
-            out.contains("Password:") || detect(&out).map_or(false, |p| matches!(p.mode, PromptMode::PasswordPrompt));
+        let is_password_prompt = out.contains("Password:")
+            || detect(&out).map_or(false, |p| matches!(p.mode, PromptMode::PasswordPrompt));
         if is_password_prompt {
-            self.transport.send(format!("{}\r\n", secret).as_str()).await?;
+            self.transport
+                .send(format!("{}\r\n", secret).as_str())
+                .await?;
             let out2 = self.read_until_prompt().await?;
             if out2.contains("% Invalid input") || !out2.contains("#") {
                 return Err(Error::PrivilegeEscalationFailed);
@@ -265,7 +282,9 @@ impl<T: DeviceTransport> Session<T> {
         if !self.privileged {
             return Err(Error::PrivilegeEscalationFailed);
         }
-        let _ = self.send_command("copy running-config startup-config\r\n").await?;
+        let _ = self
+            .send_command("copy running-config startup-config\r\n")
+            .await?;
         Ok(())
     }
 }

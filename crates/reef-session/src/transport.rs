@@ -22,7 +22,11 @@ pub trait DeviceTransport {
     async fn disconnect(&mut self) -> Result<(), super::Error>;
     async fn send(&mut self, data: &str) -> Result<(), super::Error>;
     async fn send_raw(&mut self, bytes: &[u8]) -> Result<(), super::Error>;
-    async fn read_until(&mut self, pattern: &str, timeout: Duration) -> Result<String, super::Error>;
+    async fn read_until(
+        &mut self,
+        pattern: &str,
+        timeout: Duration,
+    ) -> Result<String, super::Error>;
     async fn read_available(&mut self, timeout: Duration) -> Result<String, super::Error>;
     fn is_connected(&self) -> bool;
     fn transport_type(&self) -> TransportType;

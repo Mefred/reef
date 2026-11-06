@@ -150,7 +150,9 @@ mod tests {
     fn verify_detects_missing_interface() {
         let current = DeviceConfig::default();
         let mut desired = DeviceConfig::default();
-        desired.interfaces.insert("Loopback0".to_string(), InterfaceConfig::default());
+        desired
+            .interfaces
+            .insert("Loopback0".to_string(), InterfaceConfig::default());
         let result = verify(&current, &desired);
         assert!(!result.is_success());
     }

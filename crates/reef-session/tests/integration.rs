@@ -3,10 +3,10 @@
 //! Tests the complete configuration engine workflow: parse, plan, generate,
 //! diff, verify - using captured fixtures and a mock device.
 
+use reef_engine::diff::render;
+use reef_engine::generator::generate;
 use reef_engine::model::{DeviceConfig, InterfaceConfig, InterfaceMode};
 use reef_engine::planner::{plan, ChangeOp};
-use reef_engine::generator::generate;
-use reef_engine::diff::render;
 use reef_engine::verifier::{verify, VerificationResult};
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
@@ -127,7 +127,11 @@ fn test_plan_interface_modify() {
     let mut desired = current.clone();
 
     // Modify interface description
-    desired.interfaces.get_mut("GigabitEthernet1/0/1").unwrap().description = Some("Changed".to_string());
+    desired
+        .interfaces
+        .get_mut("GigabitEthernet1/0/1")
+        .unwrap()
+        .description = Some("Changed".to_string());
 
     let cs = plan(&current, &desired);
     let modify_entries: Vec<_> = cs
@@ -191,11 +195,11 @@ fn test_generate_interface_commands() {
     let batch = generate(&cs);
 
     assert!(batch.enter_config_mode);
-    assert!(batch.commands.iter().any(|c| c == "interface GigabitEthernet1/0/1"));
     assert!(batch
         .commands
         .iter()
-        .any(|c| c.contains("no ip address"))); // old IP removed first
+        .any(|c| c == "interface GigabitEthernet1/0/1"));
+    assert!(batch.commands.iter().any(|c| c.contains("no ip address"))); // old IP removed first
     assert!(batch
         .commands
         .iter()
@@ -235,7 +239,10 @@ fn test_generate_add_interface() {
         .commands
         .iter()
         .any(|c| c.contains("description Loopback")));
-    assert!(batch.commands.iter().any(|c| c == "ip address 1.1.1.1 255.255.255.255"));
+    assert!(batch
+        .commands
+        .iter()
+        .any(|c| c == "ip address 1.1.1.1 255.255.255.255"));
 }
 
 #[test]
@@ -249,7 +256,10 @@ fn test_generate_remove_interface_with_ip() {
 
     // Removing interface with IP should first remove the IP
     assert!(batch.commands.iter().any(|c| c == "no ip address"));
-    assert!(batch.commands.iter().any(|c| c == "no interface GigabitEthernet1/0/1"));
+    assert!(batch
+        .commands
+        .iter()
+        .any(|c| c == "no interface GigabitEthernet1/0/1"));
 }
 
 #[test]
@@ -322,7 +332,9 @@ fn test_verify_drift_interface() {
     assert!(!result.is_success());
 
     if let VerificationResult::Drift { mismatches } = result {
-        assert!(mismatches.iter().any(|m| m.contains("GigabitEthernet1/0/1")));
+        assert!(mismatches
+            .iter()
+            .any(|m| m.contains("GigabitEthernet1/0/1")));
     } else {
         panic!("Expected Drift");
     }

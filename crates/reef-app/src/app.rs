@@ -58,10 +58,9 @@ impl AppWindow {
         let controller = Rc::new(RefCell::new(ScreenController::new(current_config)));
 
         // Bind session manager to controller with a device ID
-        controller.borrow_mut().bind_session(
-            session_manager.clone(),
-            "device-1".to_string(),
-        );
+        controller
+            .borrow_mut()
+            .bind_session(session_manager.clone(), "device-1".to_string());
 
         // ===== Connection Screen callbacks =====
 
@@ -71,55 +70,75 @@ impl AppWindow {
             let rt = rt.clone();
             let cs = connection_screen.clone_strong();
             let mw = main_window.clone_strong();
-            connection_screen.on_connect_device(move |host, port, username, password, enable_secret, transport, _extra1, _extra2| {
-                let ctrl = ctrl.clone();
-                let rt = rt.clone();
-                let cs = cs.clone_strong();
-                let mw = mw.clone_strong();
-                rt.block_on(async move {
-                    let mut c = ctrl.borrow_mut();
-                    let mut config = match transport.as_ref() {
-                        "Telnet" => ConnectionConfig::telnet(&host, &username),
-                        "Serial" => ConnectionConfig::serial(&host),
-                        _ => ConnectionConfig::ssh(&host, &username),
-                    };
-                    config.port = port.trim().parse().unwrap_or(22);
-                    config.password = if password.is_empty() { None } else { Some(password.to_string()) };
-                    config.enable_secret = if enable_secret.is_empty() { None } else { Some(enable_secret.to_string()) };
+            connection_screen.on_connect_device(
+                move |host,
+                      port,
+                      username,
+                      password,
+                      enable_secret,
+                      transport,
+                      _extra1,
+                      _extra2| {
+                    let ctrl = ctrl.clone();
+                    let rt = rt.clone();
+                    let cs = cs.clone_strong();
+                    let mw = mw.clone_strong();
+                    rt.block_on(async move {
+                        let mut c = ctrl.borrow_mut();
+                        let mut config = match transport.as_ref() {
+                            "Telnet" => ConnectionConfig::telnet(&host, &username),
+                            "Serial" => ConnectionConfig::serial(&host),
+                            _ => ConnectionConfig::ssh(&host, &username),
+                        };
+                        config.port = port.trim().parse().unwrap_or(22);
+                        config.password = if password.is_empty() {
+                            None
+                        } else {
+                            Some(password.to_string())
+                        };
+                        config.enable_secret = if enable_secret.is_empty() {
+                            None
+                        } else {
+                            Some(enable_secret.to_string())
+                        };
 
-                    cs.set_status_text("Connecting...".into());
-                    cs.set_connecting(true);
+                        cs.set_status_text("Connecting...".into());
+                        cs.set_connecting(true);
 
-                    match c.connect_device(config).await {
-                        Ok(_msg) => {
-                            cs.set_status_text("Connected!".into());
-                            cs.set_connecting(false);
+                        match c.connect_device(config).await {
+                            Ok(_msg) => {
+                                cs.set_status_text("Connected!".into());
+                                cs.set_connecting(false);
 
-                            // Populate device info from controller
-                            let cc = c.current_config();
-                            mw.set_device_hostname(
-                                cc.hostname.clone().unwrap_or_else(|| host.to_string()).into(),
-                            );
-                            mw.set_device_model("Cisco IOS XE".into());
-                            mw.set_device_version("Unknown".into());
-                            mw.set_connection_status("connected".into());
-                            mw.set_is_connected(true);
-                            mw.set_diff_text("No pending changes.".into());
-                            mw.set_disruptive_warning("".into());
-                            mw.set_has_pending_changes(false);
-                            mw.set_pending_text("No pending changes".into());
+                                // Populate device info from controller
+                                let cc = c.current_config();
+                                mw.set_device_hostname(
+                                    cc.hostname
+                                        .clone()
+                                        .unwrap_or_else(|| host.to_string())
+                                        .into(),
+                                );
+                                mw.set_device_model("Cisco IOS XE".into());
+                                mw.set_device_version("Unknown".into());
+                                mw.set_connection_status("connected".into());
+                                mw.set_is_connected(true);
+                                mw.set_diff_text("No pending changes.".into());
+                                mw.set_disruptive_warning("".into());
+                                mw.set_has_pending_changes(false);
+                                mw.set_pending_text("No pending changes".into());
 
-                            // Switch windows
-                            let _ = cs.hide();
-                            let _ = mw.show();
+                                // Switch windows
+                                let _ = cs.hide();
+                                let _ = mw.show();
+                            }
+                            Err(e) => {
+                                cs.set_status_text(format!("Error: {}", e).into());
+                                cs.set_connecting(false);
+                            }
                         }
-                        Err(e) => {
-                            cs.set_status_text(format!("Error: {}", e).into());
-                            cs.set_connecting(false);
-                        }
-                    }
-                });
-            });
+                    });
+                },
+            );
         }
 
         // Load profiles
@@ -127,8 +146,7 @@ impl AppWindow {
             let cs = connection_screen.clone_strong();
             connection_screen.on_load_profiles(move || -> slint::ModelRc<SharedString> {
                 let names: Vec<SharedString> = vec!["Switch1".into(), "Router2".into()];
-                let slint_names: slint::VecModel<SharedString> =
-                    names.into_iter().collect();
+                let slint_names: slint::VecModel<SharedString> = names.into_iter().collect();
                 slint::ModelRc::new(Rc::new(slint_names))
             });
         }
@@ -338,32 +356,38 @@ impl AppWindow {
         {
             let ctrl = controller.clone();
             let mw = main_window.clone_strong();
-            main_window.on_save_interface(move |name: SharedString,
-                                             desc: SharedString,
-                                             enabled: bool,
-                                             ip: SharedString,
-                                             mask: SharedString| {
-                let mut c = ctrl.borrow_mut();
-                let diff = c.update_interface(
-                    &name,
-                    if desc.is_empty() { None } else { Some(desc.into()) },
-                    enabled,
-                    if ip.is_empty() { None } else { Some(&ip) },
-                    if mask.is_empty() { None } else { Some(&mask) },
-                );
-                mw.set_diff_text(diff.into());
-                if c.is_disruptive() {
-                    mw.set_disruptive_warning(
-                        "WARNING: This change modifies an interface with an IP address. \
-                         This may disrupt management connectivity."
-                            .into(),
+            main_window.on_save_interface(
+                move |name: SharedString,
+                      desc: SharedString,
+                      enabled: bool,
+                      ip: SharedString,
+                      mask: SharedString| {
+                    let mut c = ctrl.borrow_mut();
+                    let diff = c.update_interface(
+                        &name,
+                        if desc.is_empty() {
+                            None
+                        } else {
+                            Some(desc.into())
+                        },
+                        enabled,
+                        if ip.is_empty() { None } else { Some(&ip) },
+                        if mask.is_empty() { None } else { Some(&mask) },
                     );
-                    mw.set_has_pending_changes(true);
-                    mw.set_pending_text("Unsaved changes pending".into());
-                } else {
-                    mw.set_disruptive_warning("".into());
-                }
-            });
+                    mw.set_diff_text(diff.into());
+                    if c.is_disruptive() {
+                        mw.set_disruptive_warning(
+                            "WARNING: This change modifies an interface with an IP address. \
+                         This may disrupt management connectivity."
+                                .into(),
+                        );
+                        mw.set_has_pending_changes(true);
+                        mw.set_pending_text("Unsaved changes pending".into());
+                    } else {
+                        mw.set_disruptive_warning("".into());
+                    }
+                },
+            );
         }
 
         // ===== VLAN callbacks =====
@@ -397,23 +421,22 @@ impl AppWindow {
         {
             let ctrl = controller.clone();
             let mw = main_window.clone_strong();
-            main_window.on_save_vlan(move |name: SharedString,
-                                         desc: SharedString,
-                                         enabled: bool| {
-                let mut c = ctrl.borrow_mut();
-                let diff = c.save_vlan(&name, &desc, enabled);
-                mw.set_diff_text(diff.into());
-                if c.is_disruptive() {
-                    mw.set_disruptive_warning(
-                        "WARNING: VLAN changes may affect interface connectivity."
-                            .into(),
-                    );
-                    mw.set_has_pending_changes(true);
-                    mw.set_pending_text("Unsaved changes pending".into());
-                } else {
-                    mw.set_disruptive_warning("".into());
-                }
-            });
+            main_window.on_save_vlan(
+                move |name: SharedString, desc: SharedString, enabled: bool| {
+                    let mut c = ctrl.borrow_mut();
+                    let diff = c.save_vlan(&name, &desc, enabled);
+                    mw.set_diff_text(diff.into());
+                    if c.is_disruptive() {
+                        mw.set_disruptive_warning(
+                            "WARNING: VLAN changes may affect interface connectivity.".into(),
+                        );
+                        mw.set_has_pending_changes(true);
+                        mw.set_pending_text("Unsaved changes pending".into());
+                    } else {
+                        mw.set_disruptive_warning("".into());
+                    }
+                },
+            );
         }
 
         // ===== Route callbacks =====
@@ -434,24 +457,25 @@ impl AppWindow {
         {
             let ctrl = controller.clone();
             let mw = main_window.clone_strong();
-            main_window.on_save_route(move |prefix: SharedString,
-                                           next_hop: SharedString,
-                                           distance: SharedString,
-                                           _permanent: SharedString| {
-                let mut c = ctrl.borrow_mut();
-                let diff = c.save_route(&prefix, &next_hop, &distance, &_permanent);
-                mw.set_diff_text(diff.into());
-                if c.is_disruptive() {
-                    mw.set_disruptive_warning(
-                        "WARNING: Route changes may affect routing connectivity."
-                            .into(),
-                    );
-                    mw.set_has_pending_changes(true);
-                    mw.set_pending_text("Unsaved changes pending".into());
-                } else {
-                    mw.set_disruptive_warning("".into());
-                }
-            });
+            main_window.on_save_route(
+                move |prefix: SharedString,
+                      next_hop: SharedString,
+                      distance: SharedString,
+                      _permanent: SharedString| {
+                    let mut c = ctrl.borrow_mut();
+                    let diff = c.save_route(&prefix, &next_hop, &distance, &_permanent);
+                    mw.set_diff_text(diff.into());
+                    if c.is_disruptive() {
+                        mw.set_disruptive_warning(
+                            "WARNING: Route changes may affect routing connectivity.".into(),
+                        );
+                        mw.set_has_pending_changes(true);
+                        mw.set_pending_text("Unsaved changes pending".into());
+                    } else {
+                        mw.set_disruptive_warning("".into());
+                    }
+                },
+            );
         }
 
         // ===== ACL callbacks =====
@@ -474,8 +498,7 @@ impl AppWindow {
             let mw = main_window.clone_strong();
             main_window.on_select_acl(move |name: SharedString| {
                 let c = ctrl.borrow();
-                let (acl_name, action, protocol, source, destination) =
-                    c.select_acl(&name);
+                let (acl_name, action, protocol, source, destination) = c.select_acl(&name);
                 mw.set_edit_acl_name(acl_name.into());
                 mw.set_edit_acl_action(action.into());
                 mw.set_edit_acl_protocol(protocol.into());
@@ -496,28 +519,28 @@ impl AppWindow {
                       destination: SharedString,
                       ports: SharedString,
                       wildcard: SharedString| {
-                let mut c = ctrl.borrow_mut();
-                let diff = c.save_acl_rule(
-                    &name,
-                    &action,
-                    &protocol,
-                    &source,
-                    &destination,
-                    &ports,
-                    &wildcard,
-                );
-                mw.set_diff_text(diff.into());
-                if c.is_disruptive() {
-                    mw.set_disruptive_warning(
-                        "WARNING: ACL changes may affect traffic filtering."
-                            .into(),
+                    let mut c = ctrl.borrow_mut();
+                    let diff = c.save_acl_rule(
+                        &name,
+                        &action,
+                        &protocol,
+                        &source,
+                        &destination,
+                        &ports,
+                        &wildcard,
                     );
-                    mw.set_has_pending_changes(true);
-                    mw.set_pending_text("Unsaved changes pending".into());
-                } else {
-                    mw.set_disruptive_warning("".into());
-                }
-            });
+                    mw.set_diff_text(diff.into());
+                    if c.is_disruptive() {
+                        mw.set_disruptive_warning(
+                            "WARNING: ACL changes may affect traffic filtering.".into(),
+                        );
+                        mw.set_has_pending_changes(true);
+                        mw.set_pending_text("Unsaved changes pending".into());
+                    } else {
+                        mw.set_disruptive_warning("".into());
+                    }
+                },
+            );
         }
 
         // ===== DHCP callbacks =====
@@ -540,8 +563,7 @@ impl AppWindow {
             let mw = main_window.clone_strong();
             main_window.on_select_dhcp_pool(move |name: SharedString| {
                 let c = ctrl.borrow();
-                let (pool_name, network, mask, router, dns, lease) =
-                    c.select_dhcp_pool(&name);
+                let (pool_name, network, mask, router, dns, lease) = c.select_dhcp_pool(&name);
                 mw.set_edit_dhcp_name(pool_name.into());
                 mw.set_edit_dhcp_network(network.into());
                 mw.set_edit_dhcp_mask(mask.into());
@@ -563,19 +585,11 @@ impl AppWindow {
                       dns: SharedString,
                       lease: SharedString| {
                     let mut c = ctrl.borrow_mut();
-                    let diff = c.save_dhcp_pool(
-                        &name,
-                        &network,
-                        &mask,
-                        &router,
-                        &dns,
-                        &lease,
-                    );
+                    let diff = c.save_dhcp_pool(&name, &network, &mask, &router, &dns, &lease);
                     mw.set_diff_text(diff.into());
                     if c.is_disruptive() {
                         mw.set_disruptive_warning(
-                            "WARNING: DHCP changes may affect IP assignment."
-                                .into(),
+                            "WARNING: DHCP changes may affect IP assignment.".into(),
                         );
                         mw.set_has_pending_changes(true);
                         mw.set_pending_text("Unsaved changes pending".into());
@@ -593,8 +607,7 @@ impl AppWindow {
             let ctrl = controller.clone();
             let mw = main_window.clone_strong();
             main_window.on_load_nat_config(move || -> slint::SharedString {
-                let (nat_type, inside, outside) =
-                    ctrl.borrow().load_nat_config();
+                let (nat_type, inside, outside) = ctrl.borrow().load_nat_config();
                 format!("{}|{}|{}", nat_type, inside, outside).into()
             });
         }
@@ -603,29 +616,25 @@ impl AppWindow {
         {
             let ctrl = controller.clone();
             let mw = main_window.clone_strong();
-            main_window.on_save_nat_config(move |nat_type: SharedString,
-                                                inside: SharedString,
-                                                outside: SharedString,
-                                                _extra: SharedString| {
-                let mut c = ctrl.borrow_mut();
-                let diff = c.save_nat_config(
-                    &nat_type,
-                    &inside,
-                    &outside,
-                    &_extra,
-                );
-                mw.set_diff_text(diff.into());
-                if c.is_disruptive() {
-                    mw.set_disruptive_warning(
-                        "WARNING: NAT changes may affect traffic translation."
-                            .into(),
-                    );
-                    mw.set_has_pending_changes(true);
-                    mw.set_pending_text("Unsaved changes pending".into());
-                } else {
-                    mw.set_disruptive_warning("".into());
-                }
-            });
+            main_window.on_save_nat_config(
+                move |nat_type: SharedString,
+                      inside: SharedString,
+                      outside: SharedString,
+                      _extra: SharedString| {
+                    let mut c = ctrl.borrow_mut();
+                    let diff = c.save_nat_config(&nat_type, &inside, &outside, &_extra);
+                    mw.set_diff_text(diff.into());
+                    if c.is_disruptive() {
+                        mw.set_disruptive_warning(
+                            "WARNING: NAT changes may affect traffic translation.".into(),
+                        );
+                        mw.set_has_pending_changes(true);
+                        mw.set_pending_text("Unsaved changes pending".into());
+                    } else {
+                        mw.set_disruptive_warning("".into());
+                    }
+                },
+            );
         }
 
         // ===== SSH callbacks =====
@@ -635,8 +644,7 @@ impl AppWindow {
             let ctrl = controller.clone();
             let mw = main_window.clone_strong();
             main_window.on_load_ssh_config(move || -> slint::SharedString {
-                let (enabled, version, timeout, retries) =
-                    ctrl.borrow().load_ssh_config();
+                let (enabled, version, timeout, retries) = ctrl.borrow().load_ssh_config();
                 format!("{}|{}|{}|{}", enabled, version, timeout, retries).into()
             });
         }
@@ -651,17 +659,11 @@ impl AppWindow {
                       timeout: SharedString,
                       retries: SharedString| {
                     let mut c = ctrl.borrow_mut();
-                    let diff = c.save_ssh_config(
-                        enabled,
-                        &version,
-                        &timeout,
-                        &retries,
-                    );
+                    let diff = c.save_ssh_config(enabled, &version, &timeout, &retries);
                     mw.set_diff_text(diff.into());
                     if c.is_disruptive() {
                         mw.set_disruptive_warning(
-                            "WARNING: SSH access changes may affect management access."
-                                .into(),
+                            "WARNING: SSH access changes may affect management access.".into(),
                         );
                         mw.set_has_pending_changes(true);
                         mw.set_pending_text("Unsaved changes pending".into());
@@ -688,23 +690,22 @@ impl AppWindow {
         {
             let ctrl = controller.clone();
             let mw = main_window.clone_strong();
-            main_window.on_save_system_config(move |hostname: SharedString,
-                                                   domain: SharedString,
-                                                   dns: SharedString| {
-                let mut c = ctrl.borrow_mut();
-                let diff = c.save_system_config(&hostname, &domain, &dns);
-                mw.set_diff_text(diff.into());
-                if c.is_disruptive() {
-                    mw.set_disruptive_warning(
-                        "WARNING: System changes may affect device identification."
-                            .into(),
-                    );
-                    mw.set_has_pending_changes(true);
-                    mw.set_pending_text("Unsaved changes pending".into());
-                } else {
-                    mw.set_disruptive_warning("".into());
-                }
-            });
+            main_window.on_save_system_config(
+                move |hostname: SharedString, domain: SharedString, dns: SharedString| {
+                    let mut c = ctrl.borrow_mut();
+                    let diff = c.save_system_config(&hostname, &domain, &dns);
+                    mw.set_diff_text(diff.into());
+                    if c.is_disruptive() {
+                        mw.set_disruptive_warning(
+                            "WARNING: System changes may affect device identification.".into(),
+                        );
+                        mw.set_has_pending_changes(true);
+                        mw.set_pending_text("Unsaved changes pending".into());
+                    } else {
+                        mw.set_disruptive_warning("".into());
+                    }
+                },
+            );
         }
 
         Ok(AppWindow {

@@ -5,7 +5,7 @@
 //! re-entering existing configuration.
 
 use crate::model::{
-    AclRule, Action, AddressSpec, AclType, DhcpPool, InterfaceConfig, InterfaceMode, NatConfig,
+    AclRule, AclType, Action, AddressSpec, DhcpPool, InterfaceConfig, InterfaceMode, NatConfig,
     NatPool, NatRule, PortSpec, Protocol, Secret, StaticRoute,
 };
 use crate::planner::{ChangeOp, ChangeSet};
@@ -104,7 +104,9 @@ pub fn generate(change_set: &ChangeSet) -> CommandBatch {
                     let mask = netmask(route.prefix.prefix_len());
                     let mut cmd = format!(
                         "ip route {} {} {}",
-                        route.prefix.addr(), mask, route.next_hop
+                        route.prefix.addr(),
+                        mask,
+                        route.next_hop
                     );
                     if let Some(dist) = route.admin_distance {
                         cmd.push_str(&format!(" {}", dist));
@@ -118,7 +120,9 @@ pub fn generate(change_set: &ChangeSet) -> CommandBatch {
                     let mask = netmask(route.prefix.prefix_len());
                     commands.push(format!(
                         "no ip route {} {} {}",
-                        route.prefix.addr(), mask, route.next_hop
+                        route.prefix.addr(),
+                        mask,
+                        route.next_hop
                     ));
                 }
             }
@@ -205,11 +209,7 @@ fn emit_interface_commands(iface: &InterfaceConfig, commands: &mut Vec<String>) 
         ));
     }
     if let Some(ip) = &iface.ipv6 {
-        commands.push(format!(
-            "ipv6 address {} {}",
-            ip.address,
-            ip.prefix_len
-        ));
+        commands.push(format!("ipv6 address {} {}", ip.address, ip.prefix_len));
     }
     if !iface.enabled {
         commands.push("shutdown".to_string());
@@ -435,7 +435,10 @@ mod tests {
         };
 
         let batch = generate(&cs);
-        assert!(batch.commands.iter().any(|c| c == "ip access-list standard ACL1"));
+        assert!(batch
+            .commands
+            .iter()
+            .any(|c| c == "ip access-list standard ACL1"));
         assert!(batch.commands.iter().any(|c| c == "permit ip any any"));
     }
 

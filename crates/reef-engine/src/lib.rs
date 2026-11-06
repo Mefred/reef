@@ -7,15 +7,15 @@
 //!
 //! All configuration logic lives here so it can be unit-tested headlessly.
 
+pub mod diff;
+pub mod generator;
 pub mod model;
 pub mod parser;
-pub mod generator;
-pub mod validator;
 pub mod planner;
-pub mod diff;
+pub mod validator;
 pub mod verifier;
 
 // Re-export the top-level types for convenience.
-pub use model::{DeviceConfig, DeviceIdentity, DeviceCapabilities, InterfaceConfig};
+pub use model::{DeviceCapabilities, DeviceConfig, DeviceIdentity, InterfaceConfig};
 pub use planner::ChangeSet;
 pub use verifier::VerificationResult;

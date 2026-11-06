@@ -11,11 +11,11 @@ use crate::error::Error;
 use crate::session::Session;
 use crate::transport::DeviceTransport;
 use reef_engine::model::DeviceIdentity;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 /// Trait object for a device session, transport-agnostic.
 pub trait DynSession {
@@ -23,9 +23,7 @@ pub trait DynSession {
         &'a mut self,
         config: ConnectionConfig,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
-    fn disconnect<'a>(
-        &'a mut self,
-    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
+    fn disconnect<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
     fn enable<'a>(
         &'a mut self,
         secret: &'a str,
@@ -45,9 +43,7 @@ pub trait DynSession {
     fn identify<'a>(
         &'a mut self,
     ) -> Pin<Box<dyn Future<Output = Result<DeviceIdentity, Error>> + 'a>>;
-    fn save_config<'a>(
-        &'a mut self,
-    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
+    fn save_config<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
     fn is_connected(&self) -> bool;
     fn transport_type(&self) -> crate::transport::TransportType;
 }
@@ -69,64 +65,46 @@ impl<T: DeviceTransport> DynSession for ConcreteSession<T> {
         })
     }
 
-    fn disconnect<'a>(
-        &'a mut self,
-    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
-        Box::pin(async move {
-            self.session.disconnect().await
-        })
+    fn disconnect<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
+        Box::pin(async move { self.session.disconnect().await })
     }
 
     fn enable<'a>(
         &'a mut self,
         secret: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
-        Box::pin(async move {
-            self.session.enable(secret).await
-        })
+        Box::pin(async move { self.session.enable(secret).await })
     }
 
     fn send_command<'a>(
         &'a mut self,
         cmd: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<String, Error>> + 'a>> {
-        Box::pin(async move {
-            self.session.send_command(cmd).await
-        })
+        Box::pin(async move { self.session.send_command(cmd).await })
     }
 
     fn send_config<'a>(
         &'a mut self,
         cmd: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<String, Error>> + 'a>> {
-        Box::pin(async move {
-            self.session.send_config(cmd).await
-        })
+        Box::pin(async move { self.session.send_config(cmd).await })
     }
 
     fn send_config_batch<'a>(
         &'a mut self,
         cmds: &'a [String],
     ) -> Pin<Box<dyn Future<Output = Result<String, Error>> + 'a>> {
-        Box::pin(async move {
-            self.session.send_config_batch(cmds).await
-        })
+        Box::pin(async move { self.session.send_config_batch(cmds).await })
     }
 
     fn identify<'a>(
         &'a mut self,
     ) -> Pin<Box<dyn Future<Output = Result<DeviceIdentity, Error>> + 'a>> {
-        Box::pin(async move {
-            self.session.identify().await
-        })
+        Box::pin(async move { self.session.identify().await })
     }
 
-    fn save_config<'a>(
-        &'a mut self,
-    ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
-        Box::pin(async move {
-            self.session.save_config().await
-        })
+    fn save_config<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
+        Box::pin(async move { self.session.save_config().await })
     }
 
     fn is_connected(&self) -> bool {
@@ -151,19 +129,13 @@ impl SessionManager {
     }
 
     /// Register a new session for a device with a concrete transport.
-    pub fn register<T: DeviceTransport + 'static>(
-        &mut self,
-        device_id: &str,
-        transport: T,
-    ) {
+    pub fn register<T: DeviceTransport + 'static>(&mut self, device_id: &str, transport: T) {
         let session: Box<dyn DynSession> = Box::new(ConcreteSession {
             session: Session::new(transport, ConnectionConfig::default()),
             config: None,
         });
-        self.sessions.insert(
-            device_id.to_string(),
-            Rc::new(RefCell::new(session)),
-        );
+        self.sessions
+            .insert(device_id.to_string(), Rc::new(RefCell::new(session)));
     }
 
     /// Check whether a device has an active session.
@@ -185,11 +157,7 @@ impl SessionManager {
     }
 
     /// Connect to a device's session using the given configuration.
-    pub async fn connect(
-        &self,
-        device_id: &str,
-        config: ConnectionConfig,
-    ) -> Result<(), Error> {
+    pub async fn connect(&self, device_id: &str, config: ConnectionConfig) -> Result<(), Error> {
         let session = self
             .sessions
             .get(device_id)
@@ -239,7 +207,11 @@ impl SessionManager {
     }
 
     /// Send a batch of configuration commands.
-    pub async fn send_config_batch(&self, device_id: &str, cmds: &[String]) -> Result<String, Error> {
+    pub async fn send_config_batch(
+        &self,
+        device_id: &str,
+        cmds: &[String],
+    ) -> Result<String, Error> {
         let session = self
             .sessions
             .get(device_id)

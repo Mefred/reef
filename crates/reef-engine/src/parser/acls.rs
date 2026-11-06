@@ -1,7 +1,7 @@
 //! Parser for `show ip access-lists`.
 
 use super::{ParseResult, ParseWarning};
-use crate::model::{AclConfig, AclRule, Action, AddressSpec, AclType, PortSpec, Protocol};
+use crate::model::{AclConfig, AclRule, AclType, Action, AddressSpec, PortSpec, Protocol};
 
 pub fn parse_acls(output: &str) -> ParseResult<Vec<AclConfig>> {
     let mut acls = Vec::new();
@@ -62,7 +62,11 @@ fn parse_rule(line: &str) -> Option<AclRule> {
         return None;
     }
     // Skip leading sequence number if present
-    let start = if parts[0].parse::<u16>().is_ok() { 1 } else { 0 };
+    let start = if parts[0].parse::<u16>().is_ok() {
+        1
+    } else {
+        0
+    };
     let action = match parts[start] {
         "permit" => Action::Permit,
         "deny" => Action::Deny,
@@ -93,8 +97,14 @@ fn parse_address_spec(token: &str) -> AddressSpec {
     match token {
         "any" => AddressSpec::Any,
         "host" => AddressSpec::Any, // would need next token; simplified
-        s if s.contains('/') => s.parse::<ipnet::IpNet>().map(AddressSpec::Network).unwrap_or(AddressSpec::Any),
-        s => s.parse::<std::net::IpAddr>().map(AddressSpec::Host).unwrap_or(AddressSpec::Any),
+        s if s.contains('/') => s
+            .parse::<ipnet::IpNet>()
+            .map(AddressSpec::Network)
+            .unwrap_or(AddressSpec::Any),
+        s => s
+            .parse::<std::net::IpAddr>()
+            .map(AddressSpec::Host)
+            .unwrap_or(AddressSpec::Any),
     }
 }
 

@@ -7,7 +7,7 @@
 
 use super::{ParseResult, ParseWarning};
 use crate::model::{
-    AclConfig, AclRule, AddressSpec, Action, AclType, DhcpPool, DeviceConfig, InterfaceConfig,
+    AclConfig, AclRule, AclType, Action, AddressSpec, DeviceConfig, DhcpPool, InterfaceConfig,
     InterfaceMode, NatConfig, NatPool, NatRule, PortSpec, Protocol, Secret, StaticRoute,
     VlanConfig,
 };
@@ -130,7 +130,11 @@ fn parse_top_level(
         if let Some(route) = parse_static_route(trimmed) {
             config.ip_routes.push(route);
         } else {
-            warnings.push(ParseWarning::new(0, trimmed.to_string(), "unparsed ip route".to_string()));
+            warnings.push(ParseWarning::new(
+                0,
+                trimmed.to_string(),
+                "unparsed ip route".to_string(),
+            ));
         }
         return ConfigBlock::None;
     }
@@ -148,10 +152,11 @@ fn parse_top_level(
     }
     if trimmed.starts_with("vlan ") {
         if let Ok(id) = trimmed["vlan ".len()..].trim().parse::<u16>() {
-            config
-                .vlans
-                .entry(id)
-                .or_insert(VlanConfig { id, name: String::new(), enabled: true });
+            config.vlans.entry(id).or_insert(VlanConfig {
+                id,
+                name: String::new(),
+                enabled: true,
+            });
             return ConfigBlock::Vlan(id);
         }
         return ConfigBlock::None;
@@ -159,16 +164,23 @@ fn parse_top_level(
     if trimmed.starts_with("ip access-list ") {
         let rest = trimmed["ip access-list ".len()..].trim();
         let (name, acl_type) = if rest.starts_with("standard ") {
-            (rest["standard ".len()..].trim().to_string(), AclType::Standard)
+            (
+                rest["standard ".len()..].trim().to_string(),
+                AclType::Standard,
+            )
         } else if rest.starts_with("extended ") {
-            (rest["extended ".len()..].trim().to_string(), AclType::Extended)
+            (
+                rest["extended ".len()..].trim().to_string(),
+                AclType::Extended,
+            )
         } else {
             (rest.to_string(), AclType::Standard)
         };
-        config
-            .acls
-            .entry(name.clone())
-            .or_insert(AclConfig { name: name.clone(), acl_type, rules: Vec::new() });
+        config.acls.entry(name.clone()).or_insert(AclConfig {
+            name: name.clone(),
+            acl_type,
+            rules: Vec::new(),
+        });
         return ConfigBlock::AccessList(name, acl_type);
     }
     if trimmed.starts_with("ip dhcp pool ") {
@@ -190,12 +202,15 @@ fn parse_top_level(
     }
     if trimmed.starts_with("line ") {
         let name = trimmed["line ".len()..].trim().to_string();
-        config.line_configs.entry(name.clone()).or_insert(crate::model::LineConfig {
-            line: name.clone(),
-            transport: Vec::new(),
-            password: None,
-            login: false,
-        });
+        config
+            .line_configs
+            .entry(name.clone())
+            .or_insert(crate::model::LineConfig {
+                line: name.clone(),
+                transport: Vec::new(),
+                password: None,
+                login: false,
+            });
         return ConfigBlock::Line(name);
     }
     if trimmed.starts_with("banner ") {
@@ -203,7 +218,11 @@ fn parse_top_level(
         return ConfigBlock::None;
     }
 
-    warnings.push(ParseWarning::new(0, trimmed.to_string(), "unhandled top-level command".to_string()));
+    warnings.push(ParseWarning::new(
+        0,
+        trimmed.to_string(),
+        "unhandled top-level command".to_string(),
+    ));
     ConfigBlock::None
 }
 
@@ -215,7 +234,13 @@ fn parse_interface_sub(
 ) -> Option<ParseWarning> {
     let iface = match config.interfaces.get_mut(name) {
         Some(i) => i,
-        None => return Some(ParseWarning::new(0, trimmed.to_string(), "unknown interface".to_string())),
+        None => {
+            return Some(ParseWarning::new(
+                0,
+                trimmed.to_string(),
+                "unknown interface".to_string(),
+            ))
+        }
     };
 
     if trimmed.starts_with("description ") {
@@ -235,7 +260,11 @@ fn parse_interface_sub(
         if let Some(addr) = parse_ipv4_address(rest) {
             iface.ipv4 = Some(addr);
         } else {
-            return Some(ParseWarning::new(0, trimmed.to_string(), "unparsed ip address".to_string()));
+            return Some(ParseWarning::new(
+                0,
+                trimmed.to_string(),
+                "unparsed ip address".to_string(),
+            ));
         }
         return None;
     }
@@ -248,7 +277,11 @@ fn parse_interface_sub(
         if let Some(addr) = parse_ipv6_address(rest) {
             iface.ipv6 = Some(addr);
         } else {
-            return Some(ParseWarning::new(0, trimmed.to_string(), "unparsed ipv6 address".to_string()));
+            return Some(ParseWarning::new(
+                0,
+                trimmed.to_string(),
+                "unparsed ipv6 address".to_string(),
+            ));
         }
         return None;
     }
@@ -260,7 +293,11 @@ fn parse_interface_sub(
     }
     if trimmed.starts_with("speed ") {
         let s = trimmed["speed ".len()..].trim();
-        iface.speed = if s == "auto" { Some(crate::model::Speed::Auto) } else { None };
+        iface.speed = if s == "auto" {
+            Some(crate::model::Speed::Auto)
+        } else {
+            None
+        };
         return None;
     }
     if trimmed.starts_with("duplex ") {
@@ -286,14 +323,20 @@ fn parse_interface_sub(
         return None;
     }
     if trimmed.starts_with("switchport access vlan ") {
-        if let Ok(vlan) = trimmed["switchport access vlan ".len()..].trim().parse::<u16>() {
+        if let Ok(vlan) = trimmed["switchport access vlan ".len()..]
+            .trim()
+            .parse::<u16>()
+        {
             iface.access_vlan = Some(vlan);
             iface.mode = InterfaceMode::Access;
         }
         return None;
     }
     if trimmed.starts_with("switchport trunk native vlan ") {
-        if let Ok(vlan) = trimmed["switchport trunk native vlan ".len()..].trim().parse::<u16>() {
+        if let Ok(vlan) = trimmed["switchport trunk native vlan ".len()..]
+            .trim()
+            .parse::<u16>()
+        {
             iface.native_vlan = Some(vlan);
         }
         return None;
@@ -304,13 +347,23 @@ fn parse_interface_sub(
         return None;
     }
 
-    Some(ParseWarning::new(0, trimmed.to_string(), "unhandled interface sub-command".to_string()))
+    Some(ParseWarning::new(
+        0,
+        trimmed.to_string(),
+        "unhandled interface sub-command".to_string(),
+    ))
 }
 
 fn parse_vlan_sub(trimmed: &str, id: u16, config: &mut DeviceConfig) -> Option<ParseWarning> {
     let vlan = match config.vlans.get_mut(&id) {
         Some(v) => v,
-        None => return Some(ParseWarning::new(0, trimmed.to_string(), "unknown vlan".to_string())),
+        None => {
+            return Some(ParseWarning::new(
+                0,
+                trimmed.to_string(),
+                "unknown vlan".to_string(),
+            ))
+        }
     };
     if trimmed.starts_with("name ") {
         vlan.name = trimmed["name ".len()..].trim().to_string();
@@ -330,7 +383,13 @@ fn parse_vlan_sub(trimmed: &str, id: u16, config: &mut DeviceConfig) -> Option<P
 fn parse_line_sub(trimmed: &str, name: &str, config: &mut DeviceConfig) -> Option<ParseWarning> {
     let line = match config.line_configs.get_mut(name) {
         Some(l) => l,
-        None => return Some(ParseWarning::new(0, trimmed.to_string(), "unknown line".to_string())),
+        None => {
+            return Some(ParseWarning::new(
+                0,
+                trimmed.to_string(),
+                "unknown line".to_string(),
+            ))
+        }
     };
     if trimmed.starts_with("password ") {
         line.password = Some(Secret(trimmed["password ".len()..].trim().to_string()));
@@ -345,7 +404,10 @@ fn parse_line_sub(trimmed: &str, name: &str, config: &mut DeviceConfig) -> Optio
         return None;
     }
     if trimmed.starts_with("transport input ") {
-        let inputs: Vec<&str> = trimmed["transport input ".len()..].trim().split_whitespace().collect();
+        let inputs: Vec<&str> = trimmed["transport input ".len()..]
+            .trim()
+            .split_whitespace()
+            .collect();
         for inp in inputs {
             match inp {
                 "ssh" => {
@@ -380,7 +442,13 @@ fn parse_acl_sub(
 ) -> Option<ParseWarning> {
     let acl = match config.acls.get_mut(name) {
         Some(a) => a,
-        None => return Some(ParseWarning::new(0, trimmed.to_string(), "unknown acl".to_string())),
+        None => {
+            return Some(ParseWarning::new(
+                0,
+                trimmed.to_string(),
+                "unknown acl".to_string(),
+            ))
+        }
     };
     acl.acl_type = acl_type;
 
@@ -388,7 +456,11 @@ fn parse_acl_sub(
     if parts.is_empty() {
         return None;
     }
-    let start = if parts[0].parse::<u16>().is_ok() { 1 } else { 0 };
+    let start = if parts[0].parse::<u16>().is_ok() {
+        1
+    } else {
+        0
+    };
     if parts.len() <= start {
         return None;
     }
@@ -431,7 +503,13 @@ fn parse_acl_sub(
 fn parse_dhcp_sub(trimmed: &str, name: &str, config: &mut DeviceConfig) -> Option<ParseWarning> {
     let pool = match config.dhcp_pools.get_mut(name) {
         Some(p) => p,
-        None => return Some(ParseWarning::new(0, trimmed.to_string(), "unknown dhcp pool".to_string())),
+        None => {
+            return Some(ParseWarning::new(
+                0,
+                trimmed.to_string(),
+                "unknown dhcp pool".to_string(),
+            ))
+        }
     };
     if trimmed.starts_with("network ") {
         let rest = trimmed["network ".len()..].trim();
@@ -448,7 +526,10 @@ fn parse_dhcp_sub(trimmed: &str, name: &str, config: &mut DeviceConfig) -> Optio
         return None;
     }
     if trimmed.starts_with("dns-server ") {
-        let addrs: Vec<&str> = trimmed["dns-server ".len()..].trim().split_whitespace().collect();
+        let addrs: Vec<&str> = trimmed["dns-server ".len()..]
+            .trim()
+            .split_whitespace()
+            .collect();
         for a in addrs {
             if let Ok(ip) = a.parse::<std::net::IpAddr>() {
                 pool.dns_servers.push(ip);
@@ -457,14 +538,19 @@ fn parse_dhcp_sub(trimmed: &str, name: &str, config: &mut DeviceConfig) -> Optio
         return None;
     }
     if trimmed.starts_with("lease ") {
-        let parts: Vec<&str> = trimmed["lease ".len()..].trim().split_whitespace().collect();
+        let parts: Vec<&str> = trimmed["lease ".len()..]
+            .trim()
+            .split_whitespace()
+            .collect();
         if parts.len() >= 3 {
             if let (Ok(d), Ok(h), Ok(m)) = (
                 parts[0].parse::<u64>(),
                 parts[1].parse::<u64>(),
                 parts[2].parse::<u64>(),
             ) {
-                pool.lease_time = Some(std::time::Duration::from_secs(d * 86400 + h * 3600 + m * 60));
+                pool.lease_time = Some(std::time::Duration::from_secs(
+                    d * 86400 + h * 3600 + m * 60,
+                ));
             }
         }
         return None;
@@ -566,7 +652,8 @@ fn parse_address_spec(token: &str) -> AddressSpec {
             .parse::<ipnet::IpNet>()
             .map(AddressSpec::Network)
             .unwrap_or(AddressSpec::Any),
-        s => s.parse::<IpAddr>()
+        s => s
+            .parse::<IpAddr>()
             .map(AddressSpec::Host)
             .unwrap_or(AddressSpec::Any),
     }
@@ -580,7 +667,10 @@ fn parse_ipv4_address(rest: &str) -> Option<crate::model::Ipv4Address> {
     let addr: std::net::Ipv4Addr = parts[0].parse().ok()?;
     let mask: std::net::Ipv4Addr = parts[1].parse().ok()?;
     let prefix_len = mask_to_prefix_len(mask)?;
-    Some(crate::model::Ipv4Address { address: addr, prefix_len })
+    Some(crate::model::Ipv4Address {
+        address: addr,
+        prefix_len,
+    })
 }
 
 fn parse_ipv6_address(rest: &str) -> Option<crate::model::Ipv6Address> {
@@ -590,7 +680,10 @@ fn parse_ipv6_address(rest: &str) -> Option<crate::model::Ipv6Address> {
     }
     let addr: std::net::Ipv6Addr = parts[0].parse().ok()?;
     let prefix_len: u8 = parts[1].parse().ok()?;
-    Some(crate::model::Ipv6Address { address: addr, prefix_len })
+    Some(crate::model::Ipv6Address {
+        address: addr,
+        prefix_len,
+    })
 }
 
 fn mask_to_prefix_len(mask: std::net::Ipv4Addr) -> Option<u8> {
@@ -628,7 +721,10 @@ line vty 0 4\n transport input ssh\n";
         let r = parse_running_config(out);
         assert_eq!(r.model.hostname.as_deref(), Some("Router1"));
         assert_eq!(r.model.ip_domain_name.as_deref(), Some("example.com"));
-        assert_eq!(r.model.ip_name_server, vec!["8.8.8.8".to_string(), "8.8.4.4".to_string()]);
+        assert_eq!(
+            r.model.ip_name_server,
+            vec!["8.8.8.8".to_string(), "8.8.4.4".to_string()]
+        );
 
         let gi0 = r.model.interfaces.get("GigabitEthernet0/0/0").unwrap();
         assert!(gi0.enabled);
@@ -653,7 +749,10 @@ line vty 0 4\n transport input ssh\n";
         assert_eq!(acl.rules[0].action, Action::Permit);
 
         let pool = r.model.dhcp_pools.get("POOL1").unwrap();
-        assert_eq!(pool.default_router.as_ref().unwrap().to_string(), "192.168.20.1");
+        assert_eq!(
+            pool.default_router.as_ref().unwrap().to_string(),
+            "192.168.20.1"
+        );
         assert_eq!(pool.dns_servers.len(), 1);
 
         let con = r.model.line_configs.get("console 0").unwrap();
@@ -666,7 +765,8 @@ line vty 0 4\n transport input ssh\n";
 
     #[test]
     fn no_ip_address_removes_ipv4() {
-        let out = "interface GigabitEthernet0/0/0\n ip address 10.0.0.1 255.255.255.0\n no ip address\n";
+        let out =
+            "interface GigabitEthernet0/0/0\n ip address 10.0.0.1 255.255.255.0\n no ip address\n";
         let r = parse_running_config(out);
         let iface = r.model.interfaces.get("GigabitEthernet0/0/0").unwrap();
         assert!(iface.ipv4.is_none());

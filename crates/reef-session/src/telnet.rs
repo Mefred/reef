@@ -38,14 +38,20 @@ impl TelnetTransport {
         let stream = self.stream.as_mut().ok_or_else(|| Error::NotConnected)?;
         // Disable echo locally, suppress go-ahead, request terminal type.
         let init: &[u8] = &[
-            IAC, WONT, 1,   // WONT echo
-            IAC, WILL, 3,   // WILL suppress go-ahead
-            IAC, WILL, 0,   // WILL binary
-            IAC, DO, 0,     // DO binary
-            IAC, WILL, 24,  // WILL terminal type
+            IAC, WONT, 1, // WONT echo
+            IAC, WILL, 3, // WILL suppress go-ahead
+            IAC, WILL, 0, // WILL binary
+            IAC, DO, 0, // DO binary
+            IAC, WILL, 24, // WILL terminal type
         ];
-        stream.write_all(init).await.map_err(|e| Error::Transport(format!("telnet negotiate: {}", e)))?;
-        stream.flush().await.map_err(|e| Error::Transport(format!("telnet flush: {}", e)))?;
+        stream
+            .write_all(init)
+            .await
+            .map_err(|e| Error::Transport(format!("telnet negotiate: {}", e)))?;
+        stream
+            .flush()
+            .await
+            .map_err(|e| Error::Transport(format!("telnet flush: {}", e)))?;
         Ok(())
     }
 }
@@ -77,7 +83,10 @@ impl DeviceTransport for TelnetTransport {
             .write_all(data.as_bytes())
             .await
             .map_err(|e| Error::Transport(format!("telnet write: {}", e)))?;
-        stream.flush().await.map_err(|e| Error::Transport(format!("telnet flush: {}", e)))?;
+        stream
+            .flush()
+            .await
+            .map_err(|e| Error::Transport(format!("telnet flush: {}", e)))?;
         Ok(())
     }
 
@@ -87,7 +96,10 @@ impl DeviceTransport for TelnetTransport {
             .write_all(bytes)
             .await
             .map_err(|e| Error::Transport(format!("telnet write: {}", e)))?;
-        stream.flush().await.map_err(|e| Error::Transport(format!("telnet flush: {}", e)))?;
+        stream
+            .flush()
+            .await
+            .map_err(|e| Error::Transport(format!("telnet flush: {}", e)))?;
         Ok(())
     }
 

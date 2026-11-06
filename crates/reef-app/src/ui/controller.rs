@@ -4,19 +4,21 @@
 //! The controller owns the desired config state, runs plan → diff, and
 //! coordinates live device operations through the session manager.
 
+use ipnet::IpNet;
+use reef_engine::generator::generate;
 use reef_engine::model::{
-    AclRule, AddressSpec, Action, DeviceConfig, InterfaceConfig, InterfaceMode, Ipv4Address,
+    AclRule, Action, AddressSpec, DeviceConfig, InterfaceConfig, InterfaceMode, Ipv4Address,
     Protocol,
 };
 use reef_engine::planner::{plan, ChangeOp, ChangeSet};
-use reef_engine::generator::generate;
 use reef_engine::verifier::{verify, VerificationResult};
-use reef_session::{ConnectionConfig, HostKeyPolicy, SessionManager, TelnetTransport, TransportType};
+use reef_session::{
+    ConnectionConfig, HostKeyPolicy, SessionManager, TelnetTransport, TransportType,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::rc::Rc;
-use ipnet::IpNet;
 
 /// Controller for a single device's configuration screens.
 pub struct ScreenController {
@@ -89,18 +91,29 @@ impl ScreenController {
     /// Notify the UI to populate the interface form fields.
     fn notify_interface_form(&self, name: &str, desc: &str, enabled: bool, ip: &str, mask: &str) {
         if let Some(cb) = &self.set_interface_form_cb {
-            cb(name.to_string(), desc.to_string(), enabled, ip.to_string(), mask.to_string());
+            cb(
+                name.to_string(),
+                desc.to_string(),
+                enabled,
+                ip.to_string(),
+                mask.to_string(),
+            );
         }
     }
 
     /// Connect to a device using the given configuration.
-    pub async fn connect_device(&mut self, config: ConnectionConfig) -> Result<String, reef_session::Error> {
-        let sm = self.session_manager.as_ref().ok_or_else(|| {
-            reef_session::Error::Transport("no session manager".to_string())
-        })?;
+    pub async fn connect_device(
+        &mut self,
+        config: ConnectionConfig,
+    ) -> Result<String, reef_session::Error> {
+        let sm = self
+            .session_manager
+            .as_ref()
+            .ok_or_else(|| reef_session::Error::Transport("no session manager".to_string()))?;
         let device_id = self.device_id.as_deref().unwrap_or("device").to_string();
 
-        sm.borrow_mut().register(&device_id, TelnetTransport::new(config.clone()));
+        sm.borrow_mut()
+            .register(&device_id, TelnetTransport::new(config.clone()));
 
         sm.borrow_mut().connect(&device_id, config).await?;
 
@@ -110,7 +123,10 @@ impl ScreenController {
         self.current_config.hostname = Some(hostname.clone());
 
         // Fetch running-config
-        let running_out = sm.borrow_mut().send_command(&device_id, "show running-config\r\n").await?;
+        let running_out = sm
+            .borrow_mut()
+            .send_command(&device_id, "show running-config\r\n")
+            .await?;
         let parsed = reef_engine::parser::parse_running_config(&running_out).model;
 
         // Merge parsed config into current_config (preserve identity fields)
@@ -123,7 +139,10 @@ impl ScreenController {
         self.last_diff = String::new();
         self.has_session = true;
 
-        Ok(format!("Connected to {} ({})", identity.hostname, identity.iosxe_version))
+        Ok(format!(
+            "Connected to {} ({})",
+            identity.hostname, identity.iosxe_version
+        ))
     }
 
     /// Disconnect from the device.
@@ -139,14 +158,19 @@ impl ScreenController {
 
     /// Refresh device config from the live device.
     pub async fn refresh_config(&mut self) -> Result<String, reef_session::Error> {
-        let sm = self.session_manager.as_ref().ok_or_else(|| {
-            reef_session::Error::Transport("no session manager".to_string())
-        })?;
-        let device_id = self.device_id.as_deref().ok_or_else(|| {
-            reef_session::Error::Transport("no device id".to_string())
-        })?;
+        let sm = self
+            .session_manager
+            .as_ref()
+            .ok_or_else(|| reef_session::Error::Transport("no session manager".to_string()))?;
+        let device_id = self
+            .device_id
+            .as_deref()
+            .ok_or_else(|| reef_session::Error::Transport("no device id".to_string()))?;
 
-        let running_out = sm.borrow_mut().send_command(device_id, "show running-config\r\n").await?;
+        let running_out = sm
+            .borrow_mut()
+            .send_command(device_id, "show running-config\r\n")
+            .await?;
         let parsed = reef_engine::parser::parse_running_config(&running_out).model;
         self.current_config = parsed;
 
@@ -222,12 +246,12 @@ impl ScreenController {
     /// Select a VLAN for editing: populate form fields.
     pub fn select_vlan(&mut self, vlan_id: &str) -> (String, String, bool) {
         self.selected_vlan = Some(vlan_id.to_string());
-        if let Some(vlan) = self.desired_config.vlans.get(&vlan_id.parse::<u16>().unwrap_or(0)) {
-            (
-                vlan_id.to_string(),
-                vlan.name.clone(),
-                vlan.enabled,
-            )
+        if let Some(vlan) = self
+            .desired_config
+            .vlans
+            .get(&vlan_id.parse::<u16>().unwrap_or(0))
+        {
+            (vlan_id.to_string(), vlan.name.clone(), vlan.enabled)
         } else {
             (vlan_id.to_string(), String::new(), true)
         }
@@ -235,22 +259,15 @@ impl ScreenController {
 
     /// Save VLAN changes from the UI: update desired config, re-plan,
     /// re-diff. Returns the new diff text for display.
-    pub fn save_vlan(
-        &mut self,
-        vlan_id: &str,
-        name: &str,
-        enabled: bool,
-    ) -> String {
+    pub fn save_vlan(&mut self, vlan_id: &str, name: &str, enabled: bool) -> String {
         let vlan_id_num: u16 = vlan_id.parse().unwrap_or(0);
-        let vlan = self
-            .desired_config
-            .vlans
-            .entry(vlan_id_num)
-            .or_insert(reef_engine::model::VlanConfig {
+        let vlan = self.desired_config.vlans.entry(vlan_id_num).or_insert(
+            reef_engine::model::VlanConfig {
                 id: vlan_id_num,
                 name: String::new(),
                 enabled: true,
-            });
+            },
+        );
 
         vlan.name = name.to_string();
         vlan.enabled = enabled;
@@ -279,12 +296,12 @@ impl ScreenController {
         distance: &str,
         _permanent: &str,
     ) -> String {
-        let prefix_net: ipnet::IpNet = prefix.parse().unwrap_or_else(|_| {
-            "0.0.0.0/0".parse().unwrap()
-        });
-        let next_hop: std::net::IpAddr = next_hop.parse().unwrap_or_else(|_| {
-            "0.0.0.0".parse().unwrap()
-        });
+        let prefix_net: ipnet::IpNet = prefix
+            .parse()
+            .unwrap_or_else(|_| "0.0.0.0/0".parse().unwrap());
+        let next_hop: std::net::IpAddr = next_hop
+            .parse()
+            .unwrap_or_else(|_| "0.0.0.0".parse().unwrap());
         let admin_distance: Option<u16> = distance.parse().ok();
 
         // Check if route already exists
@@ -297,12 +314,14 @@ impl ScreenController {
             existing.next_hop = next_hop;
             existing.admin_distance = admin_distance;
         } else {
-            self.desired_config.ip_routes.push(reef_engine::model::StaticRoute {
-                prefix: prefix_net,
-                next_hop,
-                admin_distance,
-                permanent: false,
-            });
+            self.desired_config
+                .ip_routes
+                .push(reef_engine::model::StaticRoute {
+                    prefix: prefix_net,
+                    next_hop,
+                    admin_distance,
+                    permanent: false,
+                });
         }
 
         // Re-plan and re-diff
@@ -319,13 +338,17 @@ impl ScreenController {
     /// Select an ACL for editing: populate form fields.
     pub fn select_acl(&self, acl_name: &str) -> (String, String, String, String, String) {
         if let Some(acl) = self.desired_config.acls.get(acl_name) {
-            let first_rule = acl.rules.first().cloned().unwrap_or_else(|| reef_engine::model::AclRule {
-                action: reef_engine::model::Action::Permit,
-                protocol: Some(reef_engine::model::Protocol::Ip),
-                source: reef_engine::model::AddressSpec::Any,
-                destination: reef_engine::model::AddressSpec::Any,
-                ports: None,
-            });
+            let first_rule =
+                acl.rules
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| reef_engine::model::AclRule {
+                        action: reef_engine::model::Action::Permit,
+                        protocol: Some(reef_engine::model::Protocol::Ip),
+                        source: reef_engine::model::AddressSpec::Any,
+                        destination: reef_engine::model::AddressSpec::Any,
+                        ports: None,
+                    });
             let action = match first_rule.action {
                 reef_engine::model::Action::Permit => "permit",
                 reef_engine::model::Action::Deny => "deny",
@@ -356,7 +379,13 @@ impl ScreenController {
                 dest,
             )
         } else {
-            ("".to_string(), "permit".to_string(), "ip".to_string(), "any".to_string(), "any".to_string())
+            (
+                "".to_string(),
+                "permit".to_string(),
+                "ip".to_string(),
+                "any".to_string(),
+                "any".to_string(),
+            )
         }
     }
 
@@ -416,18 +445,16 @@ impl ScreenController {
             return reef_engine::model::AddressSpec::Any;
         }
         if s.starts_with("host ") {
-            let ip: std::net::IpAddr = s[5..].parse().unwrap_or_else(|_| {
-                "0.0.0.0".parse().unwrap()
-            });
+            let ip: std::net::IpAddr = s[5..]
+                .parse()
+                .unwrap_or_else(|_| "0.0.0.0".parse().unwrap());
             return reef_engine::model::AddressSpec::Host(ip);
         }
         if s.contains('/') {
             let parts: Vec<&str> = s.split('/').collect();
             if let (Ok(ip), Ok(prefix)) = (parts[0].parse(), parts[1].parse::<u8>()) {
                 return reef_engine::model::AddressSpec::Network(
-                    ipnet::IpNet::new(ip, prefix).unwrap_or_else(|_| {
-                        "0.0.0.0/0".parse().unwrap()
-                    }),
+                    ipnet::IpNet::new(ip, prefix).unwrap_or_else(|_| "0.0.0.0/0".parse().unwrap()),
                 );
             }
         }
@@ -440,7 +467,10 @@ impl ScreenController {
     }
 
     /// Select a DHCP pool for editing: populate form fields.
-    pub fn select_dhcp_pool(&self, pool_name: &str) -> (String, String, String, String, String, String) {
+    pub fn select_dhcp_pool(
+        &self,
+        pool_name: &str,
+    ) -> (String, String, String, String, String, String) {
         if let Some(pool) = self.desired_config.dhcp_pools.get(pool_name) {
             (
                 pool.name.clone(),
@@ -459,7 +489,14 @@ impl ScreenController {
                     .unwrap_or_default(),
             )
         } else {
-            (pool_name.to_string(), "0.0.0.0".to_string(), "24".to_string(), String::new(), String::new(), String::new())
+            (
+                pool_name.to_string(),
+                "0.0.0.0".to_string(),
+                "24".to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+            )
         }
     }
 
@@ -475,9 +512,9 @@ impl ScreenController {
         lease_time: &str,
     ) -> String {
         let network_str = format!("{}/{}", network, mask);
-        let net: ipnet::IpNet = network_str.parse().unwrap_or_else(|_| {
-            "0.0.0.0/0".parse().unwrap()
-        });
+        let net: ipnet::IpNet = network_str
+            .parse()
+            .unwrap_or_else(|_| "0.0.0.0/0".parse().unwrap());
         let default_router: Option<std::net::IpAddr> = if default_router.is_empty() {
             None
         } else {
@@ -490,7 +527,10 @@ impl ScreenController {
         let lease_time: Option<std::time::Duration> = if lease_time.is_empty() {
             None
         } else {
-            lease_time.parse::<u64>().ok().map(std::time::Duration::from_secs)
+            lease_time
+                .parse::<u64>()
+                .ok()
+                .map(std::time::Duration::from_secs)
         };
 
         let pool = self
@@ -538,8 +578,10 @@ impl ScreenController {
         outside: &str,
         _extra: &str,
     ) -> String {
-        let inside_interfaces: Vec<String> = inside.split_whitespace().map(|s| s.to_string()).collect();
-        let outside_interfaces: Vec<String> = outside.split_whitespace().map(|s| s.to_string()).collect();
+        let inside_interfaces: Vec<String> =
+            inside.split_whitespace().map(|s| s.to_string()).collect();
+        let outside_interfaces: Vec<String> =
+            outside.split_whitespace().map(|s| s.to_string()).collect();
 
         self.desired_config.nat = Some(reef_engine::model::NatConfig {
             inside_interfaces,
@@ -616,19 +658,17 @@ impl ScreenController {
     pub fn load_system_config(&self) -> (String, String, String) {
         (
             self.desired_config.hostname.clone().unwrap_or_default(),
-            self.desired_config.ip_domain_name.clone().unwrap_or_default(),
+            self.desired_config
+                .ip_domain_name
+                .clone()
+                .unwrap_or_default(),
             self.desired_config.ip_name_server.join(" "),
         )
     }
 
     /// Save system config from the UI: update desired config, re-plan,
     /// re-diff. Returns the new diff text for display.
-    pub fn save_system_config(
-        &mut self,
-        hostname: &str,
-        domain: &str,
-        dns: &str,
-    ) -> String {
+    pub fn save_system_config(&mut self, hostname: &str, domain: &str, dns: &str) -> String {
         self.desired_config.hostname = if hostname.is_empty() {
             None
         } else {
@@ -665,8 +705,15 @@ impl ScreenController {
     /// an interface that has an IP address — potential management-interface
     /// impact).
     pub fn is_disruptive(&self) -> bool {
-        self.desired_config.interfaces.values().any(|i| i.ipv4.is_some())
-            || self.current_config.interfaces.values().any(|i| i.ipv4.is_some())
+        self.desired_config
+            .interfaces
+            .values()
+            .any(|i| i.ipv4.is_some())
+            || self
+                .current_config
+                .interfaces
+                .values()
+                .any(|i| i.ipv4.is_some())
     }
 
     /// Get the list of interface names.
@@ -710,7 +757,10 @@ impl ScreenController {
 
     /// Get interface description.
     pub fn interface_description(&self, name: &str) -> Option<String> {
-        self.desired_config.interfaces.get(name).and_then(|i| i.description.clone())
+        self.desired_config
+            .interfaces
+            .get(name)
+            .and_then(|i| i.description.clone())
     }
 
     /// Generate the command batch for the current desired config.
@@ -721,12 +771,14 @@ impl ScreenController {
 
     /// Apply the planned changes to the live device.
     pub async fn apply_changes(&mut self) -> Result<String, reef_session::Error> {
-        let sm = self.session_manager.as_ref().ok_or_else(|| {
-            reef_session::Error::Transport("no session manager".to_string())
-        })?;
-        let device_id = self.device_id.as_deref().ok_or_else(|| {
-            reef_session::Error::Transport("no device id".to_string())
-        })?;
+        let sm = self
+            .session_manager
+            .as_ref()
+            .ok_or_else(|| reef_session::Error::Transport("no session manager".to_string()))?;
+        let device_id = self
+            .device_id
+            .as_deref()
+            .ok_or_else(|| reef_session::Error::Transport("no device id".to_string()))?;
 
         let change_set = plan(&self.current_config, &self.desired_config);
 
@@ -758,7 +810,9 @@ impl ScreenController {
             }
 
             // Verify by re-reading running-config
-            let running_out = sm.send_command(device_id, "show running-config\r\n").await?;
+            let running_out = sm
+                .send_command(device_id, "show running-config\r\n")
+                .await?;
             let parsed = reef_engine::parser::parse_running_config(&running_out).model;
             let result = verify(&parsed, &self.desired_config);
             self.last_verification = Some(result.clone());
@@ -769,7 +823,8 @@ impl ScreenController {
                 Ok(format!("Apply successful. Verification: verified."))
             } else {
                 Err(reef_session::Error::Transport(format!(
-                    "Apply failed verification: {:?}", result
+                    "Apply failed verification: {:?}",
+                    result
                 )))
             }
         }
@@ -777,12 +832,14 @@ impl ScreenController {
 
     /// Roll back the last applied changes.
     pub async fn rollback_changes(&mut self) -> Result<String, reef_session::Error> {
-        let sm = self.session_manager.as_ref().ok_or_else(|| {
-            reef_session::Error::Transport("no session manager".to_string())
-        })?;
-        let device_id = self.device_id.as_deref().ok_or_else(|| {
-            reef_session::Error::Transport("no device id".to_string())
-        })?;
+        let sm = self
+            .session_manager
+            .as_ref()
+            .ok_or_else(|| reef_session::Error::Transport("no session manager".to_string()))?;
+        let device_id = self
+            .device_id
+            .as_deref()
+            .ok_or_else(|| reef_session::Error::Transport("no device id".to_string()))?;
 
         // Rollback: restore the current_config (pre-apply state) by generating
         // reverse commands from the current desired back to current.
@@ -803,7 +860,9 @@ impl ScreenController {
             sm.save_config(device_id).await?;
 
             // Verify rollback
-            let running_out = sm.send_command(device_id, "show running-config\r\n").await?;
+            let running_out = sm
+                .send_command(device_id, "show running-config\r\n")
+                .await?;
             let parsed = reef_engine::parser::parse_running_config(&running_out).model;
             let result = verify(&parsed, &self.current_config);
 
@@ -813,7 +872,8 @@ impl ScreenController {
                 Ok("Rollback successful. Configuration restored.".to_string())
             } else {
                 Err(reef_session::Error::Transport(format!(
-                    "Rollback verification failed: {:?}", result
+                    "Rollback verification failed: {:?}",
+                    result
                 )))
             }
         }
@@ -821,12 +881,14 @@ impl ScreenController {
 
     /// Save running-config to startup-config on the device.
     pub async fn save_config(&mut self) -> Result<(), reef_session::Error> {
-        let sm = self.session_manager.as_ref().ok_or_else(|| {
-            reef_session::Error::Transport("no session manager".to_string())
-        })?;
-        let device_id = self.device_id.as_deref().ok_or_else(|| {
-            reef_session::Error::Transport("no device id".to_string())
-        })?;
+        let sm = self
+            .session_manager
+            .as_ref()
+            .ok_or_else(|| reef_session::Error::Transport("no session manager".to_string()))?;
+        let device_id = self
+            .device_id
+            .as_deref()
+            .ok_or_else(|| reef_session::Error::Transport("no device id".to_string()))?;
         {
             let sm = &*sm.borrow();
             sm.save_config(device_id).await
@@ -891,7 +953,13 @@ mod tests {
     fn controller_update_interface() {
         let cfg = DeviceConfig::default();
         let mut ctrl = ScreenController::new(cfg);
-        let diff = ctrl.update_interface("GigabitEthernet1/0/1", Some("Uplink".into()), true, Some("10.0.0.1"), Some("255.255.255.0"));
+        let diff = ctrl.update_interface(
+            "GigabitEthernet1/0/1",
+            Some("Uplink".into()),
+            true,
+            Some("10.0.0.1"),
+            Some("255.255.255.0"),
+        );
         assert!(diff.contains("GigabitEthernet1/0/1"));
         assert!(diff.contains("[ADD]"));
     }
@@ -900,9 +968,21 @@ mod tests {
     fn controller_interface_ip() {
         let cfg = DeviceConfig::default();
         let mut ctrl = ScreenController::new(cfg);
-        ctrl.update_interface("GigabitEthernet1/0/1", None, true, Some("10.0.0.1"), Some("255.255.255.0"));
-        assert_eq!(ctrl.interface_ip("GigabitEthernet1/0/1"), Some("10.0.0.1/24".to_string()));
+        ctrl.update_interface(
+            "GigabitEthernet1/0/1",
+            None,
+            true,
+            Some("10.0.0.1"),
+            Some("255.255.255.0"),
+        );
+        assert_eq!(
+            ctrl.interface_ip("GigabitEthernet1/0/1"),
+            Some("10.0.0.1/24".to_string())
+        );
         assert!(ctrl.interface_enabled("GigabitEthernet1/0/1"));
-        assert_eq!(ctrl.interface_names(), vec!["GigabitEthernet1/0/1".to_string()]);
+        assert_eq!(
+            ctrl.interface_names(),
+            vec!["GigabitEthernet1/0/1".to_string()]
+        );
     }
 }

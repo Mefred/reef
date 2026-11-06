@@ -9,10 +9,7 @@ pub fn parse_interfaces(output: &str) -> ParseResult<Vec<InterfaceRef>> {
 
     for (i, line) in output.lines().enumerate() {
         let trimmed = line.trim();
-        if trimmed.is_empty()
-            || trimmed.starts_with("Interface")
-            || trimmed.starts_with("---")
-        {
+        if trimmed.is_empty() || trimmed.starts_with("Interface") || trimmed.starts_with("---") {
             continue;
         }
         let parts: Vec<&str> = trimmed.split_whitespace().collect();

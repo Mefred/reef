@@ -6,10 +6,10 @@
 use crate::error::Error;
 use crate::session::Session;
 use crate::transport::DeviceTransport;
+use reef_engine::diff::render;
+use reef_engine::generator::generate;
 use reef_engine::model::DeviceConfig;
 use reef_engine::planner::{plan, ChangeSet};
-use reef_engine::generator::generate;
-use reef_engine::diff::render;
 use reef_engine::verifier::{verify, VerificationResult};
 use std::time::SystemTime;
 
@@ -156,8 +156,11 @@ mod tests {
     #[test]
     fn preview_renders_diff() {
         let mut cs = ChangeSet::default();
-        cs.interface_changes
-            .push(("GigabitEthernet1/0/1".to_string(), reef_engine::planner::ChangeOp::Add, None));
+        cs.interface_changes.push((
+            "GigabitEthernet1/0/1".to_string(),
+            reef_engine::planner::ChangeOp::Add,
+            None,
+        ));
         let diff = render(&cs);
         assert!(diff.contains("Interface GigabitEthernet1/0/1:"));
         assert!(diff.contains("[ADD]"));

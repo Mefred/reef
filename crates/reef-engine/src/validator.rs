@@ -79,7 +79,8 @@ mod tests {
             prefix_len: 24,
         });
         let mut cs = ChangeSet::default();
-        cs.interfaces.insert("GigabitEthernet1/0/1".to_string(), iface);
+        cs.interfaces
+            .insert("GigabitEthernet1/0/1".to_string(), iface);
         cs.interface_changes
             .push(("GigabitEthernet1/0/1".to_string(), ChangeOp::Modify, None));
 

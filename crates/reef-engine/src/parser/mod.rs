@@ -5,23 +5,23 @@
 //! so nothing is silently lost. Parsers degrade gracefully: they return a partial
 //! model plus warnings rather than hard-failing on unexpected output.
 
-mod version;
-mod interfaces;
-mod vlans;
-mod running_config;
-mod routes;
 mod acls;
 mod dhcp;
+mod interfaces;
 mod nat;
+mod routes;
+mod running_config;
+mod version;
+mod vlans;
 
-pub use version::{parse_inventory, parse_version};
-pub use interfaces::parse_interfaces;
-pub use vlans::parse_vlans;
-pub use running_config::parse_running_config;
-pub use routes::parse_routes;
 pub use acls::parse_acls;
 pub use dhcp::parse_dhcp_pools;
+pub use interfaces::parse_interfaces;
 pub use nat::parse_nat;
+pub use routes::parse_routes;
+pub use running_config::parse_running_config;
+pub use version::{parse_inventory, parse_version};
+pub use vlans::parse_vlans;
 
 /// A warning produced by a parser when it encounters output it could not fully
 /// interpret. Callers should surface these to the user as "parser noticed

@@ -46,7 +46,8 @@ pub fn parse_version(output: &str) -> ParseResult<DeviceIdentity> {
         warnings.push(ParseWarning::new(
             0,
             String::new(),
-            "hostname not found in show version; use prompt or show running-config hostname".to_string(),
+            "hostname not found in show version; use prompt or show running-config hostname"
+                .to_string(),
         ));
     }
 
@@ -58,8 +59,12 @@ fn extract_version(line: &str) -> String {
     // Keep trailing release suffixes (e.g. "a", "b", "r").
     let mut out = String::new();
     for token in line.split_whitespace() {
-        let t = token.trim_matches(|c: char| !(c.is_ascii_digit() || c == '.' || c.is_ascii_alphabetic()));
-        if !t.is_empty() && t.chars().all(|c| c.is_ascii_digit() || c == '.' || c.is_ascii_alphabetic()) {
+        let t = token
+            .trim_matches(|c: char| !(c.is_ascii_digit() || c == '.' || c.is_ascii_alphabetic()));
+        if !t.is_empty()
+            && t.chars()
+                .all(|c| c.is_ascii_digit() || c == '.' || c.is_ascii_alphabetic())
+        {
             // Require at least one digit to avoid matching pure words
             if t.chars().any(|c| c.is_ascii_digit()) {
                 out = t.to_string();
@@ -121,10 +126,7 @@ pub fn parse_interfaces(output: &str) -> ParseResult<Vec<InterfaceRef>> {
 
     for (i, line) in output.lines().enumerate() {
         let trimmed = line.trim();
-        if trimmed.is_empty()
-            || trimmed.starts_with("Interface")
-            || trimmed.starts_with("---")
-        {
+        if trimmed.is_empty() || trimmed.starts_with("Interface") || trimmed.starts_with("---") {
             continue;
         }
         let parts: Vec<&str> = trimmed.split_whitespace().collect();

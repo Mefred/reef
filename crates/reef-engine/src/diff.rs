@@ -8,10 +8,7 @@ pub fn render(change_set: &ChangeSet) -> String {
     let mut out = String::new();
 
     // System settings
-    let has_system_changes = change_set
-        .system
-        .iter()
-        .any(|op| *op != ChangeOp::NoChange);
+    let has_system_changes = change_set.system.iter().any(|op| *op != ChangeOp::NoChange);
     if has_system_changes {
         out.push_str("System:\n");
         if let Some(h) = &change_set.hostname {
@@ -29,7 +26,10 @@ pub fn render(change_set: &ChangeSet) -> String {
     for (name, op, _prev_ip) in &change_set.interface_changes {
         match op {
             ChangeOp::Add => {
-                out.push_str(&format!("Interface {}:\n  [ADD]    create interface\n", name));
+                out.push_str(&format!(
+                    "Interface {}:\n  [ADD]    create interface\n",
+                    name
+                ));
                 if let Some(iface) = change_set.interfaces.get(name) {
                     render_interface_fields(iface, &mut out);
                 }
@@ -41,7 +41,10 @@ pub fn render(change_set: &ChangeSet) -> String {
                 }
             }
             ChangeOp::Remove => {
-                out.push_str(&format!("Interface {}:\n  [REMOVE] delete interface\n", name));
+                out.push_str(&format!(
+                    "Interface {}:\n  [REMOVE] delete interface\n",
+                    name
+                ));
             }
             ChangeOp::NoChange => {}
         }
@@ -152,10 +155,7 @@ fn render_interface_fields(iface: &InterfaceConfig, out: &mut String) {
     if !iface.enabled {
         out.push_str("  [SET]    shutdown\n");
     }
-    out.push_str(&format!(
-        "  [SET]    mode {:?}\n",
-        iface.mode
-    ));
+    out.push_str(&format!("  [SET]    mode {:?}\n", iface.mode));
 }
 
 fn render_vlan_fields(vlan: &crate::model::VlanConfig, out: &mut String) {
