@@ -26,6 +26,7 @@ pub use telnet::TelnetTransport;
 pub use serial::SerialTransport;
 pub use session::Session;
 pub use manager::SessionManager;
+pub use transport::TransportType;
 
 #[cfg(test)]
 mod tests {

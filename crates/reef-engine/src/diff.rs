@@ -8,10 +8,11 @@ pub fn render(change_set: &ChangeSet) -> String {
     let mut out = String::new();
 
     // System settings
-    if change_set.hostname.is_some()
-        || change_set.ip_domain_name.is_some()
-        || !change_set.ip_name_servers.is_empty()
-    {
+    let has_system_changes = change_set
+        .system
+        .iter()
+        .any(|op| *op != ChangeOp::NoChange);
+    if has_system_changes {
         out.push_str("System:\n");
         if let Some(h) = &change_set.hostname {
             out.push_str(&format!("  [SET]    hostname {}\n", h));

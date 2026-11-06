@@ -1,0 +1,10 @@
+NAME: "Chassis", DESCR: "Cisco Catalyst 9300 24-port PoE+ Chassis"
+PID: C9300-24P         , VID: V02, SN: FOC27081FSY
+
+NAME: "Power Supply Module 1", DESCR: "Cisco Catalyst 9300 Power Supply"
+PID: C9300-PWR        , VID: V01, SN: DAP27081FSY
+
+NAME: "Fan Tray", DESCR: "Cisco Catalyst 9300 Fan Tray"
+PID: C9300-FAN        , VID: V01, SN: DAP27081FSY
+
+Device#

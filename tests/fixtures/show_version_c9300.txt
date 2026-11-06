@@ -1,0 +1,14 @@
+Cisco IOS XE Software, Version 17.12.0a
+Cisco IOS Software [Amsterdam], Catalyst L3 Switch Software (CAT9K_IOSXE), Version 17.12.0a, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2024 by Cisco Systems, Inc.
+Compiled Mon 15-Apr-24 10:30 by mcpre
+
+Cisco C9300-24P (X86) processor with 1115431K/6147K bytes of memory.
+Processor board ID FOC27081FSY
+24 Gigabit Ethernet interfaces
+4 Ten Gigabit Ethernet interfaces
+1 virtual network (vn) interface
+Configuration register is 0x102
+
+Device#

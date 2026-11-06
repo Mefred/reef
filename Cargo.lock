@@ -3858,6 +3858,7 @@ name = "reef-session"
 version = "0.1.0"
 dependencies = [
  "directories",
+ "futures",
  "hex",
  "lazy_static",
  "reef-engine",

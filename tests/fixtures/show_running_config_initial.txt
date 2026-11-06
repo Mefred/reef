@@ -1,0 +1,31 @@
+hostname Switch1
+ip domain-name example.com
+ip name-server 8.8.8.8 8.8.4.4
+interface GigabitEthernet1/0/1
+ description Uplink
+ ip address 10.0.0.1 255.255.255.0
+ no shutdown
+interface GigabitEthernet1/0/2
+ description Downlink
+ switchport mode access
+ switchport access vlan 10
+ no shutdown
+interface Vlan10
+ ip address 192.168.10.1 255.255.255.0
+ip route 10.1.0.0 255.255.255.0 10.0.0.2
+ip route 10.2.0.0 255.255.255.0 10.0.0.3 5
+vlan 10
+ name Sales
+ip access-list standard ACL1
+ 10 permit 1.2.3.4
+ 20 deny any
+ip dhcp pool POOL1
+ network 192.168.20.0 255.255.255.0
+ default-router 192.168.20.1
+ dns-server 8.8.8.8
+line console 0
+ password secret
+ login
+line vty 0 4
+ transport input ssh
+end
