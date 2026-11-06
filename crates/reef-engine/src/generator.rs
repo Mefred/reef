@@ -45,16 +45,28 @@ pub fn generate(change_set: &ChangeSet) -> CommandBatch {
     }
 
     // --- Interfaces ---
-    for (name, op) in &change_set.interface_changes {
+    for (name, op, prev_ip) in &change_set.interface_changes {
         match op {
             ChangeOp::Add | ChangeOp::Modify => {
                 if let Some(iface) = change_set.interfaces.get(name) {
                     commands.push(format!("interface {}", name));
+                    // If the interface previously had an IP and now has a
+                    // different one (or none), remove the old one first.
+                    if let Some(prev) = prev_ip {
+                        if iface.ipv4.as_ref() != Some(prev) {
+                            commands.push("no ip address".to_string());
+                        }
+                    }
                     emit_interface_commands(iface, &mut commands);
                     commands.push("exit".to_string());
                 }
             }
             ChangeOp::Remove => {
+                if prev_ip.is_some() {
+                    commands.push(format!("interface {}", name));
+                    commands.push("no ip address".to_string());
+                    commands.push("exit".to_string());
+                }
                 commands.push(format!("no interface {}", name));
             }
             ChangeOp::NoChange => {}
@@ -308,7 +320,7 @@ mod tests {
             ip_domain_name: None,
             ip_name_servers: Vec::new(),
             system: Vec::new(),
-            interface_changes: vec![("GigabitEthernet1/0/1".to_string(), ChangeOp::Modify)],
+            interface_changes: vec![("GigabitEthernet1/0/1".to_string(), ChangeOp::Modify, None)],
             interfaces: interfaces.clone(),
             vlan_changes: Vec::new(),
             vlans: HashMap::new(),
@@ -359,7 +371,7 @@ mod tests {
             ip_domain_name: None,
             ip_name_servers: Vec::new(),
             system: Vec::new(),
-            interface_changes: vec![("GigabitEthernet1/0/2".to_string(), ChangeOp::Add)],
+            interface_changes: vec![("GigabitEthernet1/0/2".to_string(), ChangeOp::Add, None)],
             interfaces: interfaces.clone(),
             vlan_changes: Vec::new(),
             vlans: HashMap::new(),

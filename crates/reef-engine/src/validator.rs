@@ -24,7 +24,7 @@ pub enum Severity {
 pub fn validate(change_set: &ChangeSet, current: &DeviceConfig) -> Vec<ValidationProblem> {
     let mut problems = Vec::new();
 
-    for (name, op) in &change_set.interface_changes {
+    for (name, op, _prev_ip) in &change_set.interface_changes {
         if *op == ChangeOp::Remove {
             problems.push(ValidationProblem {
                 severity: Severity::Warning,
@@ -81,7 +81,7 @@ mod tests {
         let mut cs = ChangeSet::default();
         cs.interfaces.insert("GigabitEthernet1/0/1".to_string(), iface);
         cs.interface_changes
-            .push(("GigabitEthernet1/0/1".to_string(), ChangeOp::Modify));
+            .push(("GigabitEthernet1/0/1".to_string(), ChangeOp::Modify, None));
 
         let problems = validate(&cs, &DeviceConfig::default());
         assert_eq!(problems.len(), 1);

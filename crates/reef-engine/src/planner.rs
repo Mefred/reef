@@ -27,7 +27,7 @@ pub struct ChangeSet {
     pub system: Vec<ChangeOp>,
 
     // Interfaces
-    pub interface_changes: Vec<(String, ChangeOp)>,
+    pub interface_changes: Vec<(String, ChangeOp, Option<crate::model::Ipv4Address>)>,
     /// The full desired interface map (needed by the generator to emit commands).
     pub interfaces: HashMap<String, InterfaceConfig>,
 
@@ -100,19 +100,19 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
         match current.interfaces.get(name) {
             None => cs
                 .interface_changes
-                .push((name.clone(), ChangeOp::Add)),
+                .push((name.clone(), ChangeOp::Add, None)),
             Some(current_iface) if current_iface != desired_iface => cs
                 .interface_changes
-                .push((name.clone(), ChangeOp::Modify)),
+                .push((name.clone(), ChangeOp::Modify, current_iface.ipv4.clone())),
             Some(_) => cs
                 .interface_changes
-                .push((name.clone(), ChangeOp::NoChange)),
+                .push((name.clone(), ChangeOp::NoChange, None)),
         }
     }
     for name in current.interfaces.keys() {
         if !desired.interfaces.contains_key(name) {
             cs.interface_changes
-                .push((name.clone(), ChangeOp::Remove));
+                .push((name.clone(), ChangeOp::Remove, current.interfaces.get(name).and_then(|i| i.ipv4.clone())));
         }
     }
 
@@ -180,7 +180,30 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
     cs.acl_configs = desired.acls.clone();
     cs.dhcp_pool_configs = desired.dhcp_pools.clone();
 
-    cs.affects_connectivity = current.hostname != desired.hostname; // placeholder heuristic
+    // affects_connectivity is true if any change could disrupt management
+    // access: changing IP/subnet on an interface that currently has an IP,
+    // or removing an interface that currently has an IP.
+    let mut affects = false;
+    for (name, op, _prev_ip) in &cs.interface_changes {
+        match op {
+            ChangeOp::Modify | ChangeOp::Remove => {
+                if let Some(cur_iface) = current.interfaces.get(name) {
+                    if cur_iface.ipv4.is_some() {
+                        affects = true;
+                    }
+                }
+            }
+            ChangeOp::Add => {
+                if let Some(des_iface) = desired.interfaces.get(name) {
+                    if des_iface.ipv4.is_some() {
+                        affects = true;
+                    }
+                }
+            }
+            ChangeOp::NoChange => {}
+        }
+    }
+    cs.affects_connectivity = affects;
 
     cs
 }

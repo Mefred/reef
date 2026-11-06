@@ -35,6 +35,9 @@ pub fn verify(current: &DeviceConfig, desired: &DeviceConfig) -> VerificationRes
     if current.ip_domain_name != desired.ip_domain_name {
         mismatches.push("ip domain-name mismatch".to_string());
     }
+    if current.ip_name_server != desired.ip_name_server {
+        mismatches.push("ip name-server mismatch".to_string());
+    }
 
     // Compare interfaces by name
     for (name, desired_iface) in &desired.interfaces {
@@ -49,6 +52,73 @@ pub fn verify(current: &DeviceConfig, desired: &DeviceConfig) -> VerificationRes
     for name in current.interfaces.keys() {
         if !desired.interfaces.contains_key(name) {
             mismatches.push(format!("interface {}: unexpected on device", name));
+        }
+    }
+
+    // Compare VLANs by ID
+    for (id, desired_vlan) in &desired.vlans {
+        match current.vlans.get(id) {
+            None => mismatches.push(format!("vlan {}: missing", id)),
+            Some(current_vlan) if current_vlan != desired_vlan => {
+                mismatches.push(format!("vlan {}: config differs", id));
+            }
+            _ => {}
+        }
+    }
+    for id in current.vlans.keys() {
+        if !desired.vlans.contains_key(id) {
+            mismatches.push(format!("vlan {}: unexpected on device", id));
+        }
+    }
+
+    // Compare static routes
+    for (i, desired_route) in desired.ip_routes.iter().enumerate() {
+        let found = current.ip_routes.iter().any(|cr| cr == desired_route);
+        if !found {
+            mismatches.push(format!(
+                "ip route {} via {}: missing",
+                desired_route.prefix, desired_route.next_hop
+            ));
+        }
+    }
+    for current_route in &current.ip_routes {
+        if !desired.ip_routes.iter().any(|dr| dr == current_route) {
+            mismatches.push(format!(
+                "ip route {} via {}: unexpected on device",
+                current_route.prefix, current_route.next_hop
+            ));
+        }
+    }
+
+    // Compare ACLs by name
+    for (name, desired_acl) in &desired.acls {
+        match current.acls.get(name) {
+            None => mismatches.push(format!("acl {}: missing", name)),
+            Some(current_acl) if current_acl != desired_acl => {
+                mismatches.push(format!("acl {}: config differs", name));
+            }
+            _ => {}
+        }
+    }
+    for name in current.acls.keys() {
+        if !desired.acls.contains_key(name) {
+            mismatches.push(format!("acl {}: unexpected on device", name));
+        }
+    }
+
+    // Compare DHCP pools by name
+    for (name, desired_pool) in &desired.dhcp_pools {
+        match current.dhcp_pools.get(name) {
+            None => mismatches.push(format!("dhcp pool {}: missing", name)),
+            Some(current_pool) if current_pool != desired_pool => {
+                mismatches.push(format!("dhcp pool {}: config differs", name));
+            }
+            _ => {}
+        }
+    }
+    for name in current.dhcp_pools.keys() {
+        if !desired.dhcp_pools.contains_key(name) {
+            mismatches.push(format!("dhcp pool {}: unexpected on device", name));
         }
     }
 
