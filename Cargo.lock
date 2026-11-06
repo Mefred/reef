@@ -3830,6 +3830,7 @@ dependencies = [
  "reef-logging",
  "slint",
  "slint-build",
+ "tokio 1.54.1",
  "tracing",
 ]
 

@@ -6,27 +6,22 @@ export component MainWindow inherits Window {
     height: 800px;
 
     property <string> connection_status: "disconnected";
-    property <string> device_hostname: "Switch1";
-    property <string> device_model: "C9300-24P";
-    property <string> device_version: "17.12.0a";
+    property <string> device_hostname: "-";
+    property <string> device_model: "-";
+    property <string> device_version: "-";
     property <bool> is_connected: false;
 
-    // Interface screen state
     property <string> selected_interface: "";
     property <string> edit_description: "";
     property <bool> edit_enabled: true;
     property <string> edit_ip: "";
     property <string> edit_mask: "255.255.255.0";
 
-    // Diff preview
     property <string> diff_text: "No pending changes.";
-
-    // Safety state
-    property <bool> disruptive_warning_visible: false;
     property <string> disruptive_warning: "";
 
-    // --- Callbacks wired to Rust controller ---
-    callback connect_device();
+    // --- Callbacks from UI to Rust ---
+    callback connect_device(string, string, string); // host, username, password
     callback disconnect_device();
     callback save_config();
     callback refresh_config();
@@ -37,7 +32,6 @@ export component MainWindow inherits Window {
     callback apply_config();
     callback rollback_config();
     callback confirm_disruptive(string);
-    callback show_diff(string);
 
     VerticalLayout {
         spacing: 0px;
@@ -49,7 +43,7 @@ export component MainWindow inherits Window {
 
             Text { text: "Reef"; font-size: 18px; }
 
-            Button { text: "Connect"; enabled: !is_connected; clicked => { connect_device(); } }
+            Button { text: "Connect"; enabled: !is_connected; clicked => { connect_device("10.0.0.1", "admin", ""); } }
             Button { text: "Disconnect"; enabled: is_connected; clicked => { disconnect_device(); } }
 
             Rectangle { width: 100%; height: 1px; }

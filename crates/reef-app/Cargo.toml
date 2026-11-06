@@ -10,6 +10,7 @@ reef-engine = { path = "../reef-engine" }
 reef-logging = { path = "../reef-logging" }
 tracing = "0.1"
 slint = "1.8"
+tokio = { version = "1", features = ["full"] }
 
 [build-dependencies]
 slint-build = "1.8"

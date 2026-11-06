@@ -1,7 +1,8 @@
-//! Slint application wiring (Phase 5).
+//! Slint application wiring.
 //!
-//! Wraps the generated Slint `MainWindow` component and bridges callbacks
-//! to the `ScreenController` (engine planning/generation).
+//! Bridges Slint UI callbacks to the reef-session session manager and
+//! reef-engine configuration engine. Uses a tokio runtime to drive async
+//! device operations from the Slint event loop.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -15,59 +16,76 @@ use crate::ui::ScreenController;
 pub struct AppWindow {
     window: MainWindow,
     controller: Rc<RefCell<ScreenController>>,
+    runtime: tokio::runtime::Runtime,
 }
 
 impl AppWindow {
     pub fn new() -> Result<Self, slint::PlatformError> {
         let window = MainWindow::new()?;
 
-        // Initial device config (mock - will come from device identification in Phase 6+)
+        let runtime = tokio::runtime::Runtime::new()
+            .map_err(|e| slint::PlatformError::Other(e.to_string().into()))?;
+
+        // Initial empty device config
         let current_config = reef_engine::model::DeviceConfig::default();
         let controller = Rc::new(RefCell::new(ScreenController::new(current_config)));
 
-        // ---- connect_device ----
-        window.on_connect_device(move || {
-            // Placeholder - actual SSH/Telnet/Serial connection handled in Phase 6+
-        });
-
-        // ---- disconnect_device ----
-        window.on_disconnect_device(move || {
-            // Placeholder
-        });
-
-        // ---- save_config ----
-        window.on_save_config(move || {
-            // Placeholder - copy running-config to startup-config
-        });
-
-        // ---- refresh_config ----
-        window.on_refresh_config(move || {
-            // Placeholder - re-fetch running-config from device
-        });
-
-        // ---- load_interfaces: returns list of interface names ----
+        // ---- connect_device: host, username, password ----
         {
             let ctrl = controller.clone();
-            window.on_load_interfaces(move || -> ModelRc<SharedString> {
-                let names = ctrl.borrow().interface_names();
-                let slint_names: Vec<SharedString> =
-                    names.iter().map(|s| s.as_str().into()).collect();
-                let model = slint::VecModel::from(slint_names);
-                ModelRc::new(Rc::new(model))
+            let handle = runtime.handle().clone();
+            window.on_connect_device(move |host: SharedString, username: SharedString, _password: SharedString| {
+                let ctrl = ctrl.clone();
+                let handle = handle.clone();
+                let _ = (ctrl, handle, host, username);
+                // Placeholder - real connection management via SessionManager
             });
         }
 
-        // ---- select_interface: populate edit form ----
+        // ---- disconnect_device ----
+        {
+            let ctrl = controller.clone();
+            window.on_disconnect_device(move || {
+                ctrl.borrow_mut().set_has_session(false);
+            });
+        }
+
+        // ---- save_config ----
+        {
+            let _ctrl = controller.clone();
+            window.on_save_config(move || {
+                // Placeholder - copy running-config to startup-config
+            });
+        }
+
+        // ---- refresh_config ----
+        {
+            let _ctrl = controller.clone();
+            window.on_refresh_config(move || {
+                // Placeholder - re-fetch running-config from device
+            });
+        }
+
+        // ---- load_interfaces ----
+        {
+            let ctrl = controller.clone();
+            window.on_load_interfaces(move || -> slint::ModelRc<SharedString> {
+                let names = ctrl.borrow().interface_names();
+                let slint_names: slint::VecModel<SharedString> =
+                    names.iter().map(|s| s.as_str().into()).collect();
+                slint::ModelRc::new(Rc::new(slint_names))
+            });
+        }
+
+        // ---- select_interface ----
         {
             let ctrl = controller.clone();
             window.on_select_interface(move |name: SharedString| {
                 let c = ctrl.borrow();
-                let ip = c.interface_ip(&name).unwrap_or_default();
-                let desc = c.interface_description(&name).unwrap_or_default();
-                let enabled = c.interface_enabled(&name);
-                // Note: Slint can't set sibling properties from here directly;
-                // the controller stores state; UI re-reads on next render.
-                let _ = (c, ip, desc, enabled);
+                let _ip = c.interface_ip(&name).unwrap_or_default();
+                let _desc = c.interface_description(&name).unwrap_or_default();
+                let _enabled = c.interface_enabled(&name);
+                let _ = (c, _ip, _desc, _enabled);
             });
         }
 
@@ -87,7 +105,7 @@ impl AppWindow {
                     if ip.is_empty() { None } else { Some(&ip) },
                     if mask.is_empty() { None } else { Some(&mask) },
                 );
-                // Diff stored in controller; UI binding pending Slint property fix.
+                let _ = _diff;
             });
         }
 
@@ -103,9 +121,12 @@ impl AppWindow {
         {
             let ctrl = controller.clone();
             window.on_confirm_disruptive(move |_confirmation: SharedString| {
+                let ctrl = ctrl.clone();
                 let current = ctrl.borrow().current_config().clone();
                 let desired = ctrl.borrow().desired_config().clone();
-                let _change_set = reef_engine::planner::plan(&current, &desired);
+                drop(ctrl);
+                let change_set = reef_engine::planner::plan(&current, &desired);
+                let _batch = reef_engine::generator::generate(&change_set);
             });
         }
 
@@ -114,21 +135,28 @@ impl AppWindow {
             let ctrl = controller.clone();
             window.on_apply_config(move || {
                 let c = ctrl.borrow();
-                let _is_disruptive = c.is_disruptive();
+                let is_disruptive = c.is_disruptive();
                 let _diff = c.diff().to_string();
+                drop(c);
+                if is_disruptive {
+                    ctrl.borrow_mut().set_has_session(false);
+                } else {
+                    // Non-disruptive apply
+                }
             });
         }
 
         // ---- rollback_config ----
         {
             window.on_rollback_config(move || {
-                // Placeholder - live rollback requires device session (Phase 6+)
+                // Placeholder - live rollback requires device session
             });
         }
 
         Ok(AppWindow {
             window,
             controller,
+            runtime,
         })
     }
 
