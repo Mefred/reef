@@ -319,6 +319,20 @@ export component MainWindow inherits Window {
     in property <string> pending_text: "No pending changes";
     in property <color> pending_color: #6c757d;
 
+    // Tab visibility
+    in property <bool> show_overview: true;
+    in property <bool> show_interfaces: false;
+    in property <bool> show_vlans: false;
+    in property <bool> show_routing: false;
+    in property <bool> show_acls: false;
+    in property <bool> show_dhcp: false;
+    in property <bool> show_nat: false;
+    in property <bool> show_ssh: false;
+    in property <bool> show_system: false;
+    in property <bool> show_changes: false;
+    in property <bool> show_backups: false;
+    in property <bool> show_terminal: false;
+
     callback disconnect_device();
     callback refresh_device();
     callback save_config();
@@ -355,6 +369,13 @@ export component MainWindow inherits Window {
 
     callback load_system_config() -> string;
     callback save_system_config(string, string, string);
+
+    callback set_active_tab(string);
+
+    callback description_changed(string);
+    callback enabled_changed(bool);
+    callback ip_changed(string);
+    callback mask_changed(string);
 
     VerticalLayout {
         spacing: 0px;
@@ -470,7 +491,7 @@ export component MainWindow inherits Window {
                     VerticalLayout {
                         spacing: 2px;
 
-                        NavItem { text: "Overview"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "Overview"; bg_color: #f0f0f0; accent_color: #007bff; text_color: #007bff; }
                         NavItem { text: "Interfaces"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
                         NavItem { text: "VLANs"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
                         NavItem { text: "Routing"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
@@ -534,6 +555,7 @@ export component MainWindow inherits Window {
 
                         GroupBox {
                             title: "Device Overview";
+                            visible: show_overview;
                             VerticalLayout {
                                 spacing: 12px;
 
@@ -545,22 +567,177 @@ export component MainWindow inherits Window {
                             }
                         }
 
+                        // Interfaces tab content
                         GroupBox {
-                            title: "Section Content";
+                            title: "Interface Configuration";
+                            visible: show_interfaces;
                             VerticalLayout {
-                                spacing: 8px;
+                                spacing: 16px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+
+                                    Text { text: "Interface:"; width: 100px; }
+
+                                    Rectangle {
+                                        width: 100%;
+                                        height: 1px;
+                                        background: #dee2e6;
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 16px;
+                                    Text { text: "Description:"; width: 120px; }
+                                    TextEdit {
+                                        text: edit_description;
+                                        width: 300px;
+                                        edited => { description_changed(self.text); }
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 16px;
+                                    Text { text: "Admin State:"; width: 120px; }
+                                    Button { text: "Toggle Enabled"; clicked => { enabled_changed(!edit_enabled); } }
+                                    Text { text: "Enabled"; color: #6c757d; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 16px;
+                                    Text { text: "IPv4 Address:"; width: 120px; }
+                                    TextEdit {
+                                        text: edit_ip;
+                                        width: 140px;
+                                        edited => { ip_changed(self.text); }
+                                    }
+                                    Text { text: "Subnet Mask:"; width: 90px; }
+                                    TextEdit {
+                                        text: edit_mask;
+                                        width: 140px;
+                                        edited => { mask_changed(self.text); }
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 16px;
+                                    Button { text: "Save Changes"; clicked => {
+                                        save_interface(selected_interface, edit_description, edit_enabled, edit_ip, edit_mask);
+                                    } }
+                                    Button { text: "Cancel"; clicked => { } }
+                                    Rectangle { width: 100%; height: 1px; }
+                                }
+
+                                Rectangle { background: #dee2e6; height: 1px; width: 100%; }
 
                                 Text {
-                                    text: "Select a section from the sidebar to view and edit configuration.";
+                                    text: "Select an interface from the list to edit.";
                                     font-size: 13px;
                                     color: #6c757d;
                                 }
+                            }
+                        }
 
-                                Rectangle { width: 100%; height: 1px; background: #dee2e6; }
+                        // VLANs tab content
+                        GroupBox {
+                            title: "VLAN Configuration";
+                            visible: show_vlans;
+                            VerticalLayout {
+                                spacing: 16px;
 
                                 Text {
-                                    text: "Changes will appear here when you edit configuration.";
-                                    font-size: 11px;
+                                    text: "VLAN configuration editor coming soon.";
+                                    font-size: 13px;
+                                    color: #6c757d;
+                                }
+                            }
+                        }
+
+                        // Routing tab content
+                        GroupBox {
+                            title: "Routing Configuration";
+                            visible: show_routing;
+                            VerticalLayout {
+                                spacing: 16px;
+
+                                Text {
+                                    text: "Routing configuration editor coming soon.";
+                                    font-size: 13px;
+                                    color: #6c757d;
+                                }
+                            }
+                        }
+
+                        // ACLs tab content
+                        GroupBox {
+                            title: "ACL Configuration";
+                            visible: show_acls;
+                            VerticalLayout {
+                                spacing: 16px;
+
+                                Text {
+                                    text: "ACL configuration editor coming soon.";
+                                    font-size: 13px;
+                                    color: #6c757d;
+                                }
+                            }
+                        }
+
+                        // DHCP tab content
+                        GroupBox {
+                            title: "DHCP Configuration";
+                            visible: show_dhcp;
+                            VerticalLayout {
+                                spacing: 16px;
+
+                                Text {
+                                    text: "DHCP configuration editor coming soon.";
+                                    font-size: 13px;
+                                    color: #6c757d;
+                                }
+                            }
+                        }
+
+                        // NAT tab content
+                        GroupBox {
+                            title: "NAT Configuration";
+                            visible: show_nat;
+                            VerticalLayout {
+                                spacing: 16px;
+
+                                Text {
+                                    text: "NAT configuration editor coming soon.";
+                                    font-size: 13px;
+                                    color: #6c757d;
+                                }
+                            }
+                        }
+
+                        // SSH tab content
+                        GroupBox {
+                            title: "SSH & Access Configuration";
+                            visible: show_ssh;
+                            VerticalLayout {
+                                spacing: 16px;
+
+                                Text {
+                                    text: "SSH configuration editor coming soon.";
+                                    font-size: 13px;
+                                    color: #6c757d;
+                                }
+                            }
+                        }
+
+                        // System tab content
+                        GroupBox {
+                            title: "System Configuration";
+                            visible: show_system;
+                            VerticalLayout {
+                                spacing: 16px;
+
+                                Text {
+                                    text: "System configuration editor coming soon.";
+                                    font-size: 13px;
                                     color: #6c757d;
                                 }
                             }

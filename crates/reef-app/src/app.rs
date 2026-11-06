@@ -319,6 +319,26 @@ impl AppWindow {
             });
         }
 
+        // Set active tab
+        {
+            let mw = main_window.clone_strong();
+            main_window.on_set_active_tab(move |tab_name: SharedString| {
+                let tab = tab_name.to_string();
+                mw.set_show_overview(tab == "overview".to_string());
+                mw.set_show_interfaces(tab == "interfaces".to_string());
+                mw.set_show_vlans(tab == "vlans".to_string());
+                mw.set_show_routing(tab == "routing".to_string());
+                mw.set_show_acls(tab == "acls".to_string());
+                mw.set_show_dhcp(tab == "dhcp".to_string());
+                mw.set_show_nat(tab == "nat".to_string());
+                mw.set_show_ssh(tab == "ssh".to_string());
+                mw.set_show_system(tab == "system".to_string());
+                mw.set_show_changes(tab == "changes".to_string());
+                mw.set_show_backups(tab == "backups".to_string());
+                mw.set_show_terminal(tab == "terminal".to_string());
+            });
+        }
+
         // ===== Interface callbacks =====
 
         // Load interfaces
