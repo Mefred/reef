@@ -1,711 +1,550 @@
 import { Button, GroupBox, ScrollView, TextEdit } from "std-widgets.slint";
 
+// Reusable sub-components
+component NavItem inherits Rectangle {
+    in property <string> text: "";
+    in property <color> bg_color: #ffffff;
+    in property <color> accent_color: transparent;
+    in property <color> text_color: #666666;
+
+    height: 44px;
+    background: bg_color;
+
+    HorizontalLayout {
+        height: 44px;
+        spacing: 12px;
+        padding: 0px;
+
+        Rectangle {
+            width: 4px;
+            height: 20px;
+            background: accent_color;
+        }
+
+        Text {
+            text: text;
+            font-size: 13px;
+            color: text_color;
+        }
+
+        Rectangle { width: 100%; }
+    }
+}
+
+component InfoRow inherits HorizontalLayout {
+    in property <string> label: "";
+    in property <string> value: "";
+
+    spacing: 0px;
+
+    Text {
+        text: label;
+        width: 130px;
+        font-size: 13px;
+        color: #6c757d;
+    }
+
+    Text {
+        text: value;
+        width: 100%;
+        font-size: 13px;
+        color: #333333;
+    }
+}
+
+// Connection Screen
+export component ConnectionScreen inherits Window {
+    title: "Reef - Connect to Device";
+    width: 900px;
+    height: 700px;
+
+    in property <string> status_text: "";
+    in property <bool> connecting: false;
+
+    callback connect_device(string, string, string, string, string, string, string, string);
+    callback load_profiles() -> [string];
+    callback select_profile(string);
+    callback save_profile(string, string, string, string, string, string);
+    callback delete_profile(string);
+    callback test_connection(string, string, string, string, string, string);
+
+    VerticalLayout {
+        spacing: 0px;
+        padding: 0px;
+
+        Rectangle {
+            background: #007bff;
+            height: 80px;
+            width: 100%;
+
+            VerticalLayout {
+                spacing: 4px;
+                padding: 20px;
+
+                Text {
+                    text: "Reef";
+                    font-size: 24px;
+                    color: #ffffff;
+                    font-weight: 700;
+                }
+
+                Text {
+                    text: "Cisco IOS XE Configuration Manager";
+                    font-size: 14px;
+                    color: #e0e0e0;
+                }
+            }
+        }
+
+        Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+
+        HorizontalLayout {
+            spacing: 0px;
+            height: 100%;
+
+            VerticalLayout {
+                width: 420px;
+                spacing: 16px;
+                padding: 32px;
+
+                GroupBox {
+                    title: "Device Profile";
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            TextEdit { width: 100%; }
+                            Button { text: "Save"; width: 60px; clicked => { } }
+                            Button { text: "Delete"; width: 60px; clicked => { } }
+                        }
+
+                        Text {
+                            text: "Select or create a device profile to connect to.";
+                            font-size: 12px;
+                            color: #6c757d;
+                        }
+                    }
+                }
+
+                Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+
+                GroupBox {
+                    title: "Connection Method";
+                    VerticalLayout {
+                        spacing: 12px;
+
+                        HorizontalLayout {
+                            spacing: 4px;
+                            Button { text: "SSH"; width: 100%; clicked => { } }
+                            Button { text: "Telnet"; width: 100%; clicked => { } }
+                            Button { text: "Serial"; width: 100%; clicked => { } }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: "Host/IP:"; width: 70px; }
+                            TextEdit { text: ""; width: 100%; }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: "Port:"; width: 70px; }
+                            TextEdit { text: "22"; width: 80px; }
+                            Text { text: "(22 SSH, 23 Telnet)"; font-size: 11px; color: #6c757d; }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: "Username:"; width: 70px; }
+                            TextEdit { text: "admin"; width: 100%; }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: "Password:"; width: 70px; }
+                            TextEdit { text: ""; width: 100%; }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: "Enable:"; width: 70px; }
+                            TextEdit { text: ""; width: 100%; }
+                        }
+
+                        Rectangle { height: 1px; width: 100%; background: #dee2e6; }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: "Serial Port:"; width: 70px; }
+                            TextEdit { text: ""; width: 100%; }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: "Baud Rate:"; width: 70px; }
+                            TextEdit { text: "9600"; width: 100px; }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            Text { text: ""; width: 70px; }
+                            Text { text: "Serial console uses physical serial port."; font-size: 11px; color: #6c757d; width: 100%; }
+                        }
+                    }
+                }
+
+                Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+
+                VerticalLayout {
+                    spacing: 12px;
+
+                    Text {
+                        text: status_text;
+                        font-size: 13px;
+                        color: #dc3545;
+                    }
+
+                    Button {
+                        text: "Connect";
+                        width: 100%;
+                        height: 40px;
+                        enabled: !connecting;
+                        clicked => {
+                            connect_device("", "", "", "", "", "", "", "");
+                        }
+                    }
+
+                    Text {
+                        text: connecting ? "Connecting..." : "Ready to connect";
+                        font-size: 11px;
+                        color: #6c757d;
+                    }
+                }
+            }
+
+            Rectangle { background: #dee2e6; width: 1px; }
+
+            VerticalLayout {
+                width: 100%;
+                spacing: 16px;
+                padding: 32px;
+
+                Text {
+                    text: "Saved Profiles";
+                    font-size: 18px;
+                    font-weight: 700;
+                }
+
+                ScrollView {
+                    height: 100%;
+                    VerticalLayout { spacing: 8px; }
+                }
+
+                Rectangle { width: 100%; height: 100%; }
+            }
+        }
+
+        Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+
+        HorizontalLayout {
+            height: 40px;
+            padding: 12px;
+
+            Text {
+                text: "Reef - Cisco IOS XE Configuration Manager";
+                font-size: 11px;
+                color: #6c757d;
+            }
+
+            Rectangle { width: 100%; }
+
+            Text {
+                text: "Not connected";
+                font-size: 11px;
+                color: #6c757d;
+            }
+        }
+    }
+}
+
+// Main Device Window
 export component MainWindow inherits Window {
     title: "Reef - Cisco IOS XE Configuration Manager";
-    width: 1200px;
-    height: 800px;
+    width: 1400px;
+    height: 900px;
 
     in property <string> connection_status: "disconnected";
     in property <string> device_hostname: "-";
     in property <string> device_model: "-";
     in property <string> device_version: "-";
+    in property <string> device_uptime: "-";
     in property <bool> is_connected: false;
-
-    in property <string> selected_interface: "";
-    in property <string> edit_description: "";
-    in property <bool> edit_enabled: true;
-    in property <string> edit_ip: "";
-    in property <string> edit_mask: "255.255.255.0";
-
-    in property <string> selected_vlan: "";
-    in property <string> edit_vlan_id: "";
-    in property <string> edit_vlan_name: "";
-    in property <bool> edit_vlan_enabled: true;
-
-    in property <string> edit_route_prefix: "";
-    in property <string> edit_route_next_hop: "";
-    in property <string> edit_route_distance: "";
-
-    in property <string> edit_acl_name: "";
-    in property <string> edit_acl_action: "permit";
-    in property <string> edit_acl_protocol: "ip";
-    in property <string> edit_acl_source: "any";
-    in property <string> edit_acl_dest: "any";
-
-    in property <string> edit_dhcp_name: "";
-    in property <string> edit_dhcp_network: "";
-    in property <string> edit_dhcp_mask: "255.255.255.0";
-    in property <string> edit_dhcp_router: "";
-    in property <string> edit_dhcp_dns: "";
-    in property <string> edit_dhcp_lease: "";
-
-    in property <string> edit_nat_type: "static";
-    in property <string> edit_nat_inside: "";
-    in property <string> edit_nat_outside: "";
-
-    in property <bool> edit_ssh_enabled: true;
-    in property <string> edit_ssh_version: "2";
-    in property <string> edit_ssh_timeout: "";
-    in property <string> edit_ssh_retries: "";
-
-    in property <string> edit_system_hostname: "";
-    in property <string> edit_system_domain: "";
-    in property <string> edit_system_dns: "";
-
     in property <string> diff_text: "No pending changes.";
     in property <string> disruptive_warning: "";
+    in property <bool> has_pending_changes: false;
+    in property <string> pending_text: "No pending changes";
+    in property <color> pending_color: #6c757d;
 
-    property <string> conn_host: "10.0.0.1";
-    property <string> conn_port: "22";
-    property <string> conn_username: "admin";
-    property <string> conn_password: "";
-    property <string> conn_enable_secret: "";
-    property <string> conn_transport: "SSH";
-
-    // --- Callbacks from UI to Rust ---
-    callback connect_device(string, string, string, string, string, string, string, string);
     callback disconnect_device();
+    callback refresh_device();
     callback save_config();
-    callback refresh_config();
-    callback load_interfaces() -> [string];
-    callback select_interface(string);
-    callback save_interface(string, string, bool, string, string);
     callback preview_config();
     callback apply_config();
     callback rollback_config();
     callback confirm_disruptive(string);
-    callback description_changed(string);
-    callback enabled_changed(bool);
-    callback ip_changed(string);
-    callback mask_changed(string);
+
+    callback load_interfaces() -> [string];
+    callback select_interface(string);
+    callback save_interface(string, string, bool, string, string);
+
     callback load_vlans() -> [string];
     callback select_vlan(string);
     callback save_vlan(string, string, bool);
-    callback edit_vlan_enabled_changed(bool);
+
     callback load_routes() -> [string];
-    callback save_route(string, string, string);
+    callback save_route(string, string, string, string);
+
     callback load_acls() -> [string];
     callback select_acl(string);
-    callback save_acl_rule(string, string, string, string, string);
+    callback save_acl_rule(string, string, string, string, string, string, string);
+
     callback load_dhcp_pools() -> [string];
     callback select_dhcp_pool(string);
     callback save_dhcp_pool(string, string, string, string, string, string);
+
     callback load_nat_config() -> string;
-    callback save_nat_config(string, string, string);
+    callback save_nat_config(string, string, string, string);
+
     callback load_ssh_config() -> string;
     callback save_ssh_config(bool, string, string, string);
+
     callback load_system_config() -> string;
     callback save_system_config(string, string, string);
-    callback edit_ssh_enabled_changed(bool);
 
     VerticalLayout {
         spacing: 0px;
+        padding: 0px;
+        height: 100%;
 
-        // --- Top toolbar ---
         HorizontalLayout {
-            spacing: 6px;
-            padding: 6px;
+            height: 60px;
+            spacing: 0px;
+            padding: 16px;
 
-            Text { text: "Reef"; font-size: 18px; }
+            VerticalLayout {
+                spacing: 2px;
 
-            Text { text: "Host:"; width: 30px; }
-            TextEdit { text: conn_host; width: 100px; }
-            Text { text: "Port:"; width: 30px; }
-            TextEdit { text: conn_port; width: 40px; }
-            Text { text: "User:"; width: 30px; }
-            TextEdit { text: conn_username; width: 80px; }
-            Text { text: "Pass:"; width: 30px; }
-            TextEdit { text: conn_password; width: 80px; }
+                Text {
+                    text: "Reef";
+                    font-size: 20px;
+                    color: #007bff;
+                    font-weight: 700;
+                }
 
-            Text { text: conn_transport; width: 60px; }
+                Text {
+                    text: device_hostname;
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: #333333;
+                }
+            }
 
-            Button { text: "Connect"; enabled: !is_connected; clicked => {
-                connect_device(conn_host, conn_port, conn_username, conn_password, conn_enable_secret, conn_transport, "", "");
-            } }
-            Button { text: "Disconnect"; enabled: is_connected; clicked => { disconnect_device(); } }
+            Rectangle { width: 100%; }
 
-            Rectangle { width: 100%; height: 1px; }
+            HorizontalLayout {
+                spacing: 12px;
 
-            Button { text: "Save Config"; enabled: is_connected; clicked => { save_config(); } }
-            Button { text: "Refresh"; enabled: is_connected; clicked => { refresh_config(); } }
+                Text {
+                    text: connection_status;
+                    font-size: 12px;
+                    color: #dc3545;
+                    font-weight: 700;
+                }
+
+                Button {
+                    text: "Refresh";
+                    width: 80px;
+                    enabled: is_connected;
+                    clicked => { refresh_device(); }
+                }
+
+                Button {
+                    text: "Disconnect";
+                    width: 100px;
+                    enabled: is_connected;
+                    clicked => { disconnect_device(); }
+                }
+            }
         }
 
-        Rectangle { background: #cccccc; height: 1px; }
+        Rectangle { background: #dee2e6; height: 1px; width: 100%; }
 
-        // --- Main split: sidebar + content ---
+        Rectangle {
+            background: #f8f9fa;
+            height: 48px;
+
+            HorizontalLayout {
+                spacing: 16px;
+                padding: 12px;
+
+                Text { text: "Model:"; width: 50px; color: #6c757d; }
+                Text { text: device_model; width: 100%; color: #333333; }
+
+                Text { text: "Version:"; width: 60px; color: #6c757d; }
+                Text { text: device_version; width: 100%; color: #333333; }
+
+                Text { text: "Uptime:"; width: 60px; color: #6c757d; }
+                Text { text: device_uptime; width: 100%; color: #333333; }
+
+                Rectangle { width: 100%; }
+
+                Button {
+                    text: "Save Config";
+                    width: 100px;
+                    enabled: is_connected;
+                    clicked => { save_config(); }
+                }
+            }
+        }
+
+        Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+
         HorizontalLayout {
+            height: 100%;
             spacing: 0px;
-            height: parent.height - 60px;
 
-            // --- Sidebar ---
-            VerticalLayout {
-                width: 260px;
-                spacing: 8px;
-                padding: 8px;
+            Rectangle {
+                background: #ffffff;
+                width: 240px;
 
-                Text { text: "Devices"; font-size: 14px; }
+                VerticalLayout {
+                    spacing: 0px;
 
-                ScrollView {
-                    height: 200px;
+                    Text {
+                        text: "Configuration";
+                        font-size: 12px;
+                        color: #6c757d;
+                        font-weight: 700;
+                        padding: 16px;
+                    }
+
                     VerticalLayout {
-                        spacing: 4px;
-                        Button { text: "Switch1"; clicked => { } }
-                        Button { text: "Router2"; clicked => { } }
+                        spacing: 2px;
+
+                        NavItem { text: "Overview"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "Interfaces"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "VLANs"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "Routing"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "ACLs"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "DHCP"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "NAT"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "SSH / Access"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "System"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "Configuration"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "Changes"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "Backups / History"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "Terminal"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                    }
+
+                    Rectangle { width: 100%; height: 100%; }
+                }
+            }
+
+            Rectangle { background: #dee2e6; width: 1px; }
+
+            VerticalLayout {
+                width: 100%;
+                spacing: 0px;
+
+                HorizontalLayout {
+                    height: 44px;
+                    spacing: 16px;
+                    padding: 12px;
+
+                    Text {
+                        text: "Overview";
+                        font-size: 18px;
+                        font-weight: 700;
+                        color: #333333;
+                    }
+
+                    Rectangle { width: 100%; }
+
+                    Button {
+                        text: "Preview";
+                        width: 80px;
+                        enabled: is_connected && has_pending_changes;
+                        clicked => { preview_config(); }
+                    }
+
+                    Button {
+                        text: "Apply";
+                        width: 90px;
+                        enabled: is_connected && has_pending_changes;
+                        clicked => { apply_config(); }
                     }
                 }
 
-                Rectangle { background: #cccccc; height: 1px; }
+                Rectangle { background: #dee2e6; height: 1px; width: 100%; }
 
-                Text { text: "Status"; font-size: 12px; }
-                Text { text: connection_status; color: #666666; }
-
-                Rectangle { background: #cccccc; height: 1px; }
-
-                Text { text: "Quick Actions"; font-size: 12px; }
-                Button { text: "Backup Config"; enabled: is_connected; clicked => { save_config(); } }
-                Button { text: "Refresh"; enabled: is_connected; clicked => { refresh_config(); } }
-            }
-
-            Rectangle { background: #cccccc; width: 1px; }
-
-            // --- Content area ---
-            VerticalLayout {
-                spacing: 8px;
-                padding: 8px;
-                width: parent.width - 260px;
-
-                // Device header
-                HorizontalLayout {
-                    spacing: 16px;
-                    Text { text: device_hostname; font-size: 20px; }
-                    Text { text: "|"; color: #999999; }
-                    Text { text: device_model; color: #666666; }
-                    Text { text: "|"; color: #999999; }
-                    Text { text: device_version; color: #666666; }
-                    Rectangle { width: 100%; height: 1px; }
-                    Text { text: connection_status; }
-                }
-
-                Rectangle { background: #cccccc; height: 1px; }
-
-                // Tab bar
-                HorizontalLayout {
-                    spacing: 0px;
-                    Button { text: "Overview"; width: 100px; }
-                    Button { text: "Interfaces"; width: 100px; }
-                    Button { text: "IP Addressing"; width: 120px; }
-                    Button { text: "VLANs"; width: 80px; }
-                    Button { text: "Routing"; width: 100px; }
-                    Button { text: "ACLs"; width: 80px; }
-                    Button { text: "DHCP"; width: 80px; }
-                    Button { text: "NAT"; width: 80px; }
-                    Button { text: "SSH / Access"; width: 120px; }
-                    Button { text: "System"; width: 100px; }
-                    Rectangle { width: 100%; height: 1px; }
-                }
-
-                Rectangle { background: #cccccc; height: 1px; }
-
-                // Interfaces screen content
-                GroupBox {
-                    title: "Interface Configuration";
+                ScrollView {
+                    height: 100%;
                     VerticalLayout {
-                        spacing: 8px;
+                        spacing: 16px;
+                        padding: 20px;
 
-                        Button { text: "Refresh Interfaces"; clicked => { load_interfaces(); } }
-
-                        ScrollView {
-                            width: 100%;
-                            height: 180px;
-
+                        GroupBox {
+                            title: "Device Overview";
                             VerticalLayout {
-                                spacing: 4px;
-                                // Interface rows populated by controller via select_interface callback
+                                spacing: 12px;
+
+                                InfoRow { label: "Hostname:"; value: device_hostname; }
+                                InfoRow { label: "Model:"; value: device_model; }
+                                InfoRow { label: "IOS XE Version:"; value: device_version; }
+                                InfoRow { label: "Uptime:"; value: device_uptime; }
+                                InfoRow { label: "Connection:"; value: connection_status; }
                             }
                         }
 
-                        Rectangle { background: #cccccc; height: 1px; }
-
-                        // Edit form for selected interface
                         GroupBox {
-                            title: "Edit Interface: " + selected_interface;
+                            title: "Section Content";
                             VerticalLayout {
                                 spacing: 8px;
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Description:"; width: 120px; }
-                                    TextEdit {
-                                        text: edit_description;
-                                        width: 300px;
-                                        edited => { description_changed(self.text); }
-                                    }
+                                Text {
+                                    text: "Select a section from the sidebar to view and edit configuration.";
+                                    font-size: 13px;
+                                    color: #6c757d;
                                 }
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Admin State:"; width: 120px; }
-                                    Button { text: "Toggle Enabled"; clicked => { enabled_changed(!edit_enabled); } }
-                                    Text { text: "Enabled"; color: #666666; }
-                                }
+                                Rectangle { width: 100%; height: 1px; background: #dee2e6; }
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "IPv4 Address:"; width: 120px; }
-                                    TextEdit {
-                                        text: edit_ip;
-                                        width: 140px;
-                                        edited => { ip_changed(self.text); }
-                                    }
-                                    Text { text: "Subnet Mask:"; width: 90px; }
-                                    TextEdit {
-                                        text: edit_mask;
-                                        width: 140px;
-                                        edited => { mask_changed(self.text); }
-                                    }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Button { text: "Save Changes"; clicked => {
-                                        save_interface(selected_interface, edit_description, edit_enabled, edit_ip, edit_mask);
-                                    } }
-                                    Button { text: "Cancel"; clicked => { } }
-                                    Rectangle { width: 100%; height: 1px; }
+                                Text {
+                                    text: "Changes will appear here when you edit configuration.";
+                                    font-size: 11px;
+                                    color: #6c757d;
                                 }
                             }
                         }
 
-                        // Diff preview
                         GroupBox {
                             title: "Configuration Preview";
                             VerticalLayout {
                                 spacing: 8px;
+
                                 TextEdit {
                                     text: diff_text;
-                                    height: 120px;
-                                }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Button { text: "Preview Changes"; clicked => { preview_config(); } }
-                                    Rectangle { width: 100%; height: 1px; }
-                                }
-                                Rectangle { background: #cccccc; height: 1px; }
-                                Text { text: disruptive_warning; color: #dc3545; }
-                            }
-                        }
-                    }
-                }
-
-                // VLANs tab content
-                GroupBox {
-                    title: "VLAN Configuration";
-                    VerticalLayout {
-                        spacing: 8px;
-
-                        Button { text: "Refresh VLANs"; clicked => { load_vlans(); } }
-
-                        ScrollView {
-                            width: 100%;
-                            height: 180px;
-
-                            VerticalLayout {
-                                spacing: 4px;
-                                // VLAN rows populated by controller via select_vlan callback
-                            }
-                        }
-
-                        Rectangle { background: #cccccc; height: 1px; }
-
-                        // Edit form for selected VLAN
-                        GroupBox {
-                            title: "Edit VLAN: " + edit_vlan_id;
-                            VerticalLayout {
-                                spacing: 8px;
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "VLAN ID:"; width: 120px; }
-                                    TextEdit { text: edit_vlan_id; width: 100px; enabled: false; }
+                                    height: 150px;
+                                    read-only: true;
                                 }
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Name:"; width: 120px; }
-                                    TextEdit { text: edit_vlan_name; width: 300px; }
-                                }
+                                Rectangle { background: #dee2e6; height: 1px; width: 100%; }
 
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "State:"; width: 120px; }
-                                    Button { text: "Toggle Enabled"; clicked => { edit_vlan_enabled_changed(!edit_vlan_enabled); } }
-                                    Text { text: "Enabled"; color: #666666; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Button { text: "Save Changes"; clicked => {
-                                        save_vlan(edit_vlan_id, edit_vlan_name, edit_vlan_enabled);
-                                    } }
-                                    Button { text: "Cancel"; clicked => { } }
-                                    Rectangle { width: 100%; height: 1px; }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // IP Addressing tab content
-                GroupBox {
-                    title: "IP Addressing";
-                    VerticalLayout {
-                        spacing: 8px;
-
-                        Button { text: "Refresh IP Addressing"; clicked => { load_routes(); } }
-
-                        ScrollView {
-                            width: 100%;
-                            height: 180px;
-
-                            VerticalLayout {
-                                spacing: 4px;
-                                // IP addressing rows populated by controller via select route callback
-                            }
-                        }
-
-                        Rectangle { background: #cccccc; height: 1px; }
-
-                        // Edit form for route
-                        GroupBox {
-                            title: "Edit Static Route";
-                            VerticalLayout {
-                                spacing: 8px;
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Prefix:"; width: 120px; }
-                                    TextEdit { text: edit_route_prefix; width: 140px; }
-                                    Text { text: "Next Hop:"; width: 90px; }
-                                    TextEdit { text: edit_route_next_hop; width: 140px; }
-                                    Text { text: "Admin Distance:"; width: 100px; }
-                                    TextEdit { text: edit_route_distance; width: 100px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Button { text: "Save Changes"; clicked => {
-                                        save_route(edit_route_prefix, edit_route_next_hop, edit_route_distance);
-                                    } }
-                                    Button { text: "Cancel"; clicked => { } }
-                                    Rectangle { width: 100%; height: 1px; }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // ACLs tab content
-                GroupBox {
-                    title: "ACL Configuration";
-                    VerticalLayout {
-                        spacing: 8px;
-
-                        Button { text: "Refresh ACLs"; clicked => { load_acls(); } }
-
-                        ScrollView {
-                            width: 100%;
-                            height: 180px;
-
-                            VerticalLayout {
-                                spacing: 4px;
-                                // ACL rows populated by controller via select_acl callback
-                            }
-                        }
-
-                        Rectangle { background: #cccccc; height: 1px; }
-
-                        // Edit form for ACL rule
-                        GroupBox {
-                            title: "Edit ACL Rule";
-                            VerticalLayout {
-                                spacing: 8px;
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "ACL Name:"; width: 120px; }
-                                    TextEdit { text: edit_acl_name; width: 200px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Action:"; width: 120px; }
-                                    TextEdit { text: edit_acl_action; width: 140px; }
-                                    Text { text: "Protocol:"; width: 90px; }
-                                    TextEdit { text: edit_acl_protocol; width: 140px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Source:"; width: 120px; }
-                                    TextEdit { text: edit_acl_source; width: 140px; }
-                                    Text { text: "Dest:"; width: 90px; }
-                                    TextEdit { text: edit_acl_dest; width: 140px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Button { text: "Add Rule"; clicked => {
-                                        save_acl_rule(edit_acl_name, edit_acl_action, edit_acl_protocol, edit_acl_source, edit_acl_dest);
-                                    } }
-                                    Button { text: "Cancel"; clicked => { } }
-                                    Rectangle { width: 100%; height: 1px; }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // DHCP tab content
-                GroupBox {
-                    title: "DHCP Configuration";
-                    VerticalLayout {
-                        spacing: 8px;
-
-                        Button { text: "Refresh DHCP Pools"; clicked => { load_dhcp_pools(); } }
-
-                        ScrollView {
-                            width: 100%;
-                            height: 180px;
-
-                            VerticalLayout {
-                                spacing: 4px;
-                                // DHCP pools populated by controller via select_dhcp_pool callback
-                            }
-                        }
-
-                        Rectangle { background: #cccccc; height: 1px; }
-
-                        // Edit form for DHCP pool
-                        GroupBox {
-                            title: "Edit DHCP Pool";
-                            VerticalLayout {
-                                spacing: 8px;
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Pool Name:"; width: 120px; }
-                                    TextEdit { text: edit_dhcp_name; width: 200px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Network:"; width: 120px; }
-                                    TextEdit { text: edit_dhcp_network; width: 140px; }
-                                    Text { text: "Mask:"; width: 90px; }
-                                    TextEdit { text: edit_dhcp_mask; width: 140px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Default Router:"; width: 120px; }
-                                    TextEdit { text: edit_dhcp_router; width: 140px; }
-                                    Text { text: "DNS Server:"; width: 90px; }
-                                    TextEdit { text: edit_dhcp_dns; width: 140px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Lease Time:"; width: 120px; }
-                                    TextEdit { text: edit_dhcp_lease; width: 140px; }
-                                    Text { text: "seconds"; color: #666666; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Button { text: "Save Changes"; clicked => {
-                                        save_dhcp_pool(edit_dhcp_name, edit_dhcp_network, edit_dhcp_mask, edit_dhcp_router, edit_dhcp_dns, edit_dhcp_lease);
-                                    } }
-                                    Button { text: "Cancel"; clicked => { } }
-                                    Rectangle { width: 100%; height: 1px; }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // NAT tab content
-                GroupBox {
-                    title: "NAT Configuration";
-                    VerticalLayout {
-                        spacing: 8px;
-
-                        Button { text: "Refresh NAT"; clicked => { load_nat_config(); } }
-
-                        ScrollView {
-                            width: 100%;
-                            height: 180px;
-
-                            VerticalLayout {
-                                spacing: 4px;
-                                // NAT rules populated by controller via load_nat_config callback
-                            }
-                        }
-
-                        Rectangle { background: #cccccc; height: 1px; }
-
-                        // Edit form for NAT
-                        GroupBox {
-                            title: "NAT Configuration";
-                            VerticalLayout {
-                                spacing: 8px;
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "NAT Type:"; width: 120px; }
-                                    TextEdit { text: edit_nat_type; width: 200px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Inside Interface:"; width: 120px; }
-                                    TextEdit { text: edit_nat_inside; width: 200px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Outside Interface:"; width: 120px; }
-                                    TextEdit { text: edit_nat_outside; width: 200px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Button { text: "Save Changes"; clicked => {
-                                        save_nat_config(edit_nat_type, edit_nat_inside, edit_nat_outside);
-                                    } }
-                                    Button { text: "Cancel"; clicked => { } }
-                                    Rectangle { width: 100%; height: 1px; }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // SSH / Access tab content
-                GroupBox {
-                    title: "SSH & Device Access";
-                    VerticalLayout {
-                        spacing: 8px;
-
-                        Button { text: "Refresh SSH/Access"; clicked => { load_ssh_config(); } }
-
-                        ScrollView {
-                            width: 100%;
-                            height: 180px;
-
-                            VerticalLayout {
-                                spacing: 4px;
-                                // SSH settings populated by controller via load_ssh_config callback
-                            }
-                        }
-
-                        Rectangle { background: #cccccc; height: 1px; }
-
-                        // Edit form for SSH
-                        GroupBox {
-                            title: "SSH Configuration";
-                            VerticalLayout {
-                                spacing: 8px;
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "SSH Enabled:"; width: 120px; }
-                                    Button { text: "Toggle"; clicked => { edit_ssh_enabled_changed(!edit_ssh_enabled); } }
-                                    Text { text: "Enabled"; color: #666666; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "SSH Version:"; width: 120px; }
-                                    TextEdit { text: edit_ssh_version; width: 200px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Timeout:"; width: 120px; }
-                                    TextEdit { text: edit_ssh_timeout; width: 140px; }
-                                    Text { text: "seconds"; color: #666666; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Auth Retries:"; width: 120px; }
-                                    TextEdit { text: edit_ssh_retries; width: 140px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Button { text: "Save Changes"; clicked => {
-                                        save_ssh_config(edit_ssh_enabled, edit_ssh_version, edit_ssh_timeout, edit_ssh_retries);
-                                    } }
-                                    Button { text: "Cancel"; clicked => { } }
-                                    Rectangle { width: 100%; height: 1px; }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // System tab content
-                GroupBox {
-                    title: "System Settings";
-                    VerticalLayout {
-                        spacing: 8px;
-
-                        Button { text: "Refresh System"; clicked => { load_system_config(); } }
-
-                        ScrollView {
-                            width: 100%;
-                            height: 180px;
-
-                            VerticalLayout {
-                                spacing: 4px;
-                                // System settings populated by controller via load_system_config callback
-                            }
-                        }
-
-                        Rectangle { background: #cccccc; height: 1px; }
-
-                        // Edit form for system settings
-                        GroupBox {
-                            title: "System Configuration";
-                            VerticalLayout {
-                                spacing: 8px;
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Hostname:"; width: 120px; }
-                                    TextEdit { text: edit_system_hostname; width: 200px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "Domain Name:"; width: 120px; }
-                                    TextEdit { text: edit_system_domain; width: 200px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Text { text: "DNS Servers:"; width: 120px; }
-                                    TextEdit { text: edit_system_dns; width: 200px; }
-                                }
-
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    Button { text: "Save Changes"; clicked => {
-                                        save_system_config(edit_system_hostname, edit_system_domain, edit_system_dns);
-                                    } }
-                                    Button { text: "Cancel"; clicked => { } }
-                                    Rectangle { width: 100%; height: 1px; }
+                                Text {
+                                    text: disruptive_warning;
+                                    font-size: 12px;
+                                    color: #dc3545;
                                 }
                             }
                         }
@@ -714,15 +553,27 @@ export component MainWindow inherits Window {
             }
         }
 
-        // --- Bottom: Apply / Rollback bar ---
-        Rectangle { background: #eeeeee; height: 1px; }
+        Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+
         HorizontalLayout {
-            spacing: 8px;
-            padding: 8px;
-            Rectangle { width: 100%; height: 1px; }
-            Button { text: "Preview"; enabled: is_connected; clicked => { preview_config(); } }
-            Button { text: "Apply"; enabled: is_connected; clicked => { apply_config(); } }
-            Button { text: "Rollback"; enabled: is_connected; clicked => { rollback_config(); } }
+            height: 56px;
+            spacing: 16px;
+            padding: 12px;
+
+            Button {
+                text: "Rollback";
+                width: 90px;
+                enabled: is_connected && has_pending_changes;
+                clicked => { rollback_config(); }
+            }
+
+            Rectangle { width: 100%; }
+
+            Text {
+                text: pending_text;
+                font-size: 12px;
+                color: pending_color;
+            }
         }
     }
 }
