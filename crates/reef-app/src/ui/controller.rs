@@ -9,10 +9,10 @@ use reef_engine::planner::{plan, ChangeOp, ChangeSet};
 use reef_engine::generator::generate;
 use reef_engine::verifier::{verify, VerificationResult};
 use reef_session::{ConnectionConfig, HostKeyPolicy, SessionManager, TelnetTransport, TransportType};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 /// Controller for a single device's configuration screens.
 pub struct ScreenController {
@@ -23,6 +23,10 @@ pub struct ScreenController {
     last_diff: String,
     last_verification: Option<VerificationResult>,
     has_session: bool,
+    /// Currently selected interface name (for form field updates).
+    selected_interface: Option<String>,
+    /// Callback to populate Slint interface form fields from Rust.
+    set_interface_form_cb: Option<Box<dyn Fn(String, String, bool, String, String)>>,
 }
 
 impl ScreenController {
@@ -35,6 +39,8 @@ impl ScreenController {
             last_diff: String::new(),
             last_verification: None,
             has_session: false,
+            selected_interface: None,
+            set_interface_form_cb: None,
         }
     }
 
@@ -63,6 +69,21 @@ impl ScreenController {
     /// Get the device ID.
     pub fn device_id(&self) -> Option<String> {
         self.device_id.clone()
+    }
+
+    /// Register a callback to populate Slint interface form fields from Rust.
+    pub fn set_interface_form_callback<F: Fn(String, String, bool, String, String) + 'static>(
+        &mut self,
+        cb: F,
+    ) {
+        self.set_interface_form_cb = Some(Box::new(cb));
+    }
+
+    /// Notify the UI to populate the interface form fields.
+    fn notify_interface_form(&self, name: &str, desc: &str, enabled: bool, ip: &str, mask: &str) {
+        if let Some(cb) = &self.set_interface_form_cb {
+            cb(name.to_string(), desc.to_string(), enabled, ip.to_string(), mask.to_string());
+        }
     }
 
     /// Connect to a device using the given configuration.
@@ -183,6 +204,7 @@ impl ScreenController {
     /// impact).
     pub fn is_disruptive(&self) -> bool {
         self.desired_config.interfaces.values().any(|i| i.ipv4.is_some())
+            || self.current_config.interfaces.values().any(|i| i.ipv4.is_some())
     }
 
     /// Get the list of interface names.
@@ -197,6 +219,22 @@ impl ScreenController {
             .get(name)
             .and_then(|i| i.ipv4.as_ref())
             .map(|ip| format!("{}/{}", ip.address, ip.prefix_len))
+    }
+
+    /// Get interface subnet mask for display.
+    pub fn interface_mask(&self, name: &str) -> Option<String> {
+        self.desired_config
+            .interfaces
+            .get(name)
+            .and_then(|i| i.ipv4.as_ref())
+            .map(|ip| {
+                let bits: u32 = if ip.prefix_len == 0 {
+                    0
+                } else {
+                    !((1u32 << (32 - ip.prefix_len)) - 1)
+                };
+                std::net::Ipv4Addr::from(bits.to_be_bytes()).to_string()
+            })
     }
 
     /// Get interface enabled state.
@@ -341,6 +379,21 @@ impl ScreenController {
     /// Get a reference to the desired config.
     pub fn desired_config(&self) -> &DeviceConfig {
         &self.desired_config
+    }
+
+    /// Get a mutable reference to the desired config.
+    pub fn desired_config_mut(&mut self) -> &mut DeviceConfig {
+        &mut self.desired_config
+    }
+
+    /// Set the currently selected interface name.
+    pub fn set_selected_interface(&mut self, name: String) {
+        self.selected_interface = Some(name);
+    }
+
+    /// Get the currently selected interface name.
+    pub fn selected_interface_name(&self) -> Option<String> {
+        self.selected_interface.clone()
     }
 
     /// Returns whether a live session is available for apply.

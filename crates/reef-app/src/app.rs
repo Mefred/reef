@@ -14,6 +14,19 @@ use slint::{ComponentHandle, ModelRc, SharedString};
 use crate::ui::ScreenController;
 use reef_session::{ConnectionConfig, SessionManager};
 
+fn mask_to_prefix_len(mask: std::net::Ipv4Addr) -> Option<u8> {
+    let bits = u32::from_be_bytes(mask.octets());
+    if bits == 0 {
+        return Some(0);
+    }
+    let trailing = bits.trailing_zeros();
+    if bits == (!0_u32 << trailing) {
+        Some((32 - trailing) as u8)
+    } else {
+        None
+    }
+}
+
 pub struct AppWindow {
     window: MainWindow,
     controller: Rc<RefCell<ScreenController>>,
@@ -41,21 +54,37 @@ impl AppWindow {
             "device-1".to_string(),
         );
 
-        // ---- connect_device: host, username, password ----
+        // ---- connect_device: host, port, username, password, enable_secret, transport, ----
         {
             let ctrl = controller.clone();
             let rt = rt.clone();
             let win = window.clone_strong();
-            window.on_connect_device(move |host: SharedString, username: SharedString, password: SharedString| {
+            window.on_connect_device(move |host: SharedString, port: SharedString, username: SharedString,
+                                           password: SharedString, enable_secret: SharedString,
+                                           transport: SharedString, _extra1: SharedString,
+                                           _extra2: SharedString| {
                 let ctrl = ctrl.clone();
                 let rt = rt.clone();
                 let win = win.clone_strong();
                 rt.block_on(async move {
                     let mut c = ctrl.borrow_mut();
-                    let mut config = ConnectionConfig::telnet(&host, &username);
-                    if !password.is_empty() {
-                        config.password = Some(password.to_string());
-                    }
+                    let transport_type = match transport.as_ref() {
+                        "Telnet" => reef_session::TransportType::Telnet,
+                        "Serial" => reef_session::TransportType::Serial,
+                        _ => reef_session::TransportType::Ssh,
+                    };
+                    let port: u16 = port.trim().parse().unwrap_or(22);
+                    let mut config = match transport_type {
+                        reef_session::TransportType::Ssh =>
+                            ConnectionConfig::ssh(&host, &username),
+                        reef_session::TransportType::Telnet =>
+                            ConnectionConfig::telnet(&host, &username),
+                        reef_session::TransportType::Serial =>
+                            ConnectionConfig::serial(&host),
+                    };
+                    config.port = port;
+                    config.password = if password.is_empty() { None } else { Some(password.to_string()) };
+                    config.enable_secret = if enable_secret.is_empty() { None } else { Some(enable_secret.to_string()) };
                     match c.connect_device(config).await {
                         Ok(msg) => {
                             win.set_connection_status("connected".into());
@@ -107,6 +136,8 @@ impl AppWindow {
                     let mut c = ctrl.borrow_mut();
                     if let Err(e) = c.save_config().await {
                         win.set_connection_status(format!("save error: {}", e).into());
+                    } else {
+                        win.set_connection_status("Config saved to startup-config".into());
                     }
                 });
             });
@@ -149,12 +180,16 @@ impl AppWindow {
         // ---- select_interface ----
         {
             let ctrl = controller.clone();
+            let win = window.clone_strong();
             window.on_select_interface(move |name: SharedString| {
-                let c = ctrl.borrow();
-                let _ip = c.interface_ip(&name).unwrap_or_default();
-                let _desc = c.interface_description(&name).unwrap_or_default();
-                let _enabled = c.interface_enabled(&name);
-                let _ = (c, _ip, _desc, _enabled);
+                let mut c = ctrl.borrow_mut();
+                c.set_selected_interface(name.to_string());
+                let ip_full = c.interface_ip(&name).unwrap_or_default();
+                let mask = c.interface_mask(&name).unwrap_or_default();
+                let desc = c.interface_description(&name).unwrap_or_default();
+                let enabled = c.interface_enabled(&name);
+                // Set Slint form fields via invoke_set_interface_form
+                win.invoke_set_interface_form(name.clone(), desc.into(), enabled, ip_full.into(), mask.into());
             });
         }
 
@@ -185,6 +220,75 @@ impl AppWindow {
                 } else {
                     win.set_disruptive_warning("".into());
                 }
+            });
+        }
+
+        // ---- description_changed ----
+        {
+            let ctrl = controller.clone();
+            window.on_description_changed(move |text: SharedString| {
+                let mut c = ctrl.borrow_mut();
+                if let Some(name) = c.selected_interface_name() {
+                    let mut dc = c.desired_config_mut();
+                    if let Some(iface) = dc.interfaces.get_mut(&name) {
+                        iface.description = if text.is_empty() { None } else { Some(text.to_string()) };
+                    }
+                }
+                let _ = c;
+            });
+        }
+
+        // ---- enabled_changed ----
+        {
+            let ctrl = controller.clone();
+            window.on_enabled_changed(move |enabled: bool| {
+                let mut c = ctrl.borrow_mut();
+                if let Some(name) = c.selected_interface_name() {
+                    let mut dc = c.desired_config_mut();
+                    if let Some(iface) = dc.interfaces.get_mut(&name) {
+                        iface.enabled = enabled;
+                    }
+                }
+                let _ = c;
+            });
+        }
+
+        // ---- ip_changed ----
+        {
+            let ctrl = controller.clone();
+            window.on_ip_changed(move |text: SharedString| {
+                let mut c = ctrl.borrow_mut();
+                if let Some(name) = c.selected_interface_name() {
+                    let mut dc = c.desired_config_mut();
+                    if let Some(iface) = dc.interfaces.get_mut(&name) {
+                        if let Ok(ip_addr) = text.parse::<std::net::Ipv4Addr>() {
+                            iface.ipv4 = Some(reef_engine::model::Ipv4Address {
+                                address: ip_addr,
+                                prefix_len: 24,
+                            });
+                        }
+                    }
+                }
+                let _ = c;
+            });
+        }
+
+        // ---- mask_changed ----
+        {
+            let ctrl = controller.clone();
+            window.on_mask_changed(move |text: SharedString| {
+                let mut c = ctrl.borrow_mut();
+                if let Some(name) = c.selected_interface_name() {
+                    let mut dc = c.desired_config_mut();
+                    if let Some(iface) = dc.interfaces.get_mut(&name) {
+                        if let Some(ip) = iface.ipv4.as_mut() {
+                            if let Ok(mask) = text.parse::<std::net::Ipv4Addr>() {
+                                ip.prefix_len = mask_to_prefix_len(mask).unwrap_or(24);
+                            }
+                        }
+                    }
+                }
+                let _ = c;
             });
         }
 

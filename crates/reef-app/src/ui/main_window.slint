@@ -1,4 +1,4 @@
-import { Button, GroupBox, ScrollView, TextEdit } from "std-widgets.slint";
+import { Button, ComboBox, GroupBox, ScrollView, TextEdit } from "std-widgets.slint";
 
 export component MainWindow inherits Window {
     title: "Reef - Cisco IOS XE Configuration Manager";
@@ -20,8 +20,15 @@ export component MainWindow inherits Window {
     in property <string> diff_text: "No pending changes.";
     in property <string> disruptive_warning: "";
 
+    property <string> conn_host: "10.0.0.1";
+    property <string> conn_port: "22";
+    property <string> conn_username: "admin";
+    property <string> conn_password: "";
+    property <string> conn_enable_secret: "";
+    property <string> conn_transport: "SSH";
+
     // --- Callbacks from UI to Rust ---
-    callback connect_device(string, string, string); // host, username, password
+    callback connect_device(string, string, string, string, string, string, string, string);
     callback disconnect_device();
     callback save_config();
     callback refresh_config();
@@ -32,18 +39,44 @@ export component MainWindow inherits Window {
     callback apply_config();
     callback rollback_config();
     callback confirm_disruptive(string);
+    callback description_changed(string);
+    callback enabled_changed(bool);
+    callback ip_changed(string);
+    callback mask_changed(string);
+
+    // Function called from Rust to populate form fields
+    public function set_interface_form(name: string, desc: string, enabled: bool, ip: string, mask: string) {
+        selected_interface = name;
+        edit_description = desc;
+        edit_enabled = enabled;
+        edit_ip = ip;
+        edit_mask = mask;
+    }
 
     VerticalLayout {
         spacing: 0px;
 
         // --- Top toolbar ---
         HorizontalLayout {
-            spacing: 8px;
-            padding: 8px;
+            spacing: 6px;
+            padding: 6px;
 
             Text { text: "Reef"; font-size: 18px; }
 
-            Button { text: "Connect"; enabled: !is_connected; clicked => { connect_device("10.0.0.1", "admin", ""); } }
+            Text { text: "Host:"; width: 30px; }
+            TextEdit { text: conn_host; width: 100px; }
+            Text { text: "Port:"; width: 30px; }
+            TextEdit { text: conn_port; width: 40px; }
+            Text { text: "User:"; width: 30px; }
+            TextEdit { text: conn_username; width: 80px; }
+            Text { text: "Pass:"; width: 30px; }
+            TextEdit { text: conn_password; width: 80px; }
+
+            Text { text: conn_transport; width: 60px; }
+
+            Button { text: "Connect"; enabled: !is_connected; clicked => {
+                connect_device(conn_host, conn_port, conn_username, conn_password, conn_enable_secret, conn_transport, "", "");
+            } }
             Button { text: "Disconnect"; enabled: is_connected; clicked => { disconnect_device(); } }
 
             Rectangle { width: 100%; height: 1px; }
@@ -138,7 +171,7 @@ export component MainWindow inherits Window {
 
                         ScrollView {
                             width: 100%;
-                            height: 200px;
+                            height: 180px;
 
                             VerticalLayout {
                                 spacing: 4px;
@@ -157,22 +190,34 @@ export component MainWindow inherits Window {
                                 HorizontalLayout {
                                     spacing: 8px;
                                     Text { text: "Description:"; width: 120px; }
-                                    TextEdit { text: edit_description; width: 300px; }
+                                    TextEdit { 
+                                        text: edit_description; 
+                                        width: 300px; 
+                                        edited => { description_changed(self.text); }
+                                    }
                                 }
 
                                 HorizontalLayout {
                                     spacing: 8px;
                                     Text { text: "Admin State:"; width: 120px; }
-                                    Button { text: "Toggle Enabled"; clicked => { edit_enabled = !edit_enabled; } }
-                                    Text { text: "current: enabled"; color: #666666; }
+                                    Button { text: "Toggle Enabled"; clicked => { enabled_changed(!edit_enabled); } }
+                                    Text { text: "Enabled"; color: #666666; }
                                 }
 
                                 HorizontalLayout {
                                     spacing: 8px;
                                     Text { text: "IPv4 Address:"; width: 120px; }
-                                    TextEdit { text: edit_ip; width: 140px; }
+                                    TextEdit { 
+                                        text: edit_ip; 
+                                        width: 140px; 
+                                        edited => { ip_changed(self.text); }
+                                    }
                                     Text { text: "Subnet Mask:"; width: 90px; }
-                                    TextEdit { text: edit_mask; width: 140px; }
+                                    TextEdit { 
+                                        text: edit_mask; 
+                                        width: 140px; 
+                                        edited => { mask_changed(self.text); }
+                                    }
                                 }
 
                                 HorizontalLayout {
