@@ -53,7 +53,7 @@ pub struct InterfaceConfig {
     pub speed: Option<Speed>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Copy)]
 pub enum InterfaceMode {
     Access,
     Trunk,
@@ -138,7 +138,7 @@ pub struct AclConfig {
     pub rules: Vec<AclRule>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Copy)]
 pub enum AclType {
     Standard,
     Extended,

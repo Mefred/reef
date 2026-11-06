@@ -12,6 +12,10 @@ mod serial;
 mod transport;
 mod session;
 mod manager;
+mod apply;
+
+pub use apply::ApplyOrchestrator;
+pub use apply::ApplyResult;
 
 // Re-export public API.
 pub use config::{ConnectionConfig, HostKeyPolicy};

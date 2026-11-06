@@ -68,15 +68,20 @@ mod tests {
         let mut interfaces = HashMap::new();
         interfaces.insert("GigabitEthernet1/0/1".to_string(), iface);
         let cs = ChangeSet {
-            interface_changes: vec![("GigabitEthernet1/0/1".to_string(), ChangeOp::Add)],
-            vlan_changes: Vec::new(),
-            ip_routes: Vec::new(),
-            ipv6_routes: Vec::new(),
-            acls: Vec::new(),
-            dhcp_pools: Vec::new(),
-            nat: None,
+            hostname: None,
+            ip_domain_name: None,
+            ip_name_servers: Vec::new(),
             system: Vec::new(),
+            interface_changes: vec![("GigabitEthernet1/0/1".to_string(), ChangeOp::Add)],
             interfaces,
+            vlan_changes: Vec::new(),
+            vlans: HashMap::new(),
+            ip_routes: Vec::new(),
+            routes: Vec::new(),
+            acls: Vec::new(),
+            acl_configs: HashMap::new(),
+            dhcp_pools: Vec::new(),
+            dhcp_pool_configs: HashMap::new(),
             affects_connectivity: false,
         };
         let out = render(&cs);
