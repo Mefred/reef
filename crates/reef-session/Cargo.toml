@@ -1,0 +1,12 @@
+[package]
+name = "reef-session"
+description = "Device session and transport management for Reef (SSH/Telnet/Serial)"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+
+[dependencies]
+reef-engine = { path = "../reef-engine" }
+reef-logging = { path = "../reef-logging" }
+tokio = { version = "1", features = ["full"] }
+thiserror = "1"

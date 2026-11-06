@@ -1,0 +1,10 @@
+[package]
+name = "reef-logging"
+description = "Structured logging setup for Reef using tracing"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

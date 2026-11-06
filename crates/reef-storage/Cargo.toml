@@ -1,0 +1,10 @@
+[package]
+name = "reef-storage"
+description = "Persistent storage for Reef: device profiles, saved configs, change history"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
