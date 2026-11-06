@@ -3826,6 +3826,7 @@ dependencies = [
 name = "reef-app"
 version = "0.1.0"
 dependencies = [
+ "ipnet",
  "reef-engine",
  "reef-logging",
  "reef-session",

@@ -1,4 +1,4 @@
-import { Button, ComboBox, GroupBox, ScrollView, TextEdit } from "std-widgets.slint";
+import { Button, GroupBox, ScrollView, TextEdit } from "std-widgets.slint";
 
 export component MainWindow inherits Window {
     title: "Reef - Cisco IOS XE Configuration Manager";
@@ -11,11 +11,46 @@ export component MainWindow inherits Window {
     in property <string> device_version: "-";
     in property <bool> is_connected: false;
 
-    property <string> selected_interface: "";
-    property <string> edit_description: "";
-    property <bool> edit_enabled: true;
-    property <string> edit_ip: "";
-    property <string> edit_mask: "255.255.255.0";
+    in property <string> selected_interface: "";
+    in property <string> edit_description: "";
+    in property <bool> edit_enabled: true;
+    in property <string> edit_ip: "";
+    in property <string> edit_mask: "255.255.255.0";
+
+    in property <string> selected_vlan: "";
+    in property <string> edit_vlan_id: "";
+    in property <string> edit_vlan_name: "";
+    in property <bool> edit_vlan_enabled: true;
+
+    in property <string> edit_route_prefix: "";
+    in property <string> edit_route_next_hop: "";
+    in property <string> edit_route_distance: "";
+
+    in property <string> edit_acl_name: "";
+    in property <string> edit_acl_action: "permit";
+    in property <string> edit_acl_protocol: "ip";
+    in property <string> edit_acl_source: "any";
+    in property <string> edit_acl_dest: "any";
+
+    in property <string> edit_dhcp_name: "";
+    in property <string> edit_dhcp_network: "";
+    in property <string> edit_dhcp_mask: "255.255.255.0";
+    in property <string> edit_dhcp_router: "";
+    in property <string> edit_dhcp_dns: "";
+    in property <string> edit_dhcp_lease: "";
+
+    in property <string> edit_nat_type: "static";
+    in property <string> edit_nat_inside: "";
+    in property <string> edit_nat_outside: "";
+
+    in property <bool> edit_ssh_enabled: true;
+    in property <string> edit_ssh_version: "2";
+    in property <string> edit_ssh_timeout: "";
+    in property <string> edit_ssh_retries: "";
+
+    in property <string> edit_system_hostname: "";
+    in property <string> edit_system_domain: "";
+    in property <string> edit_system_dns: "";
 
     in property <string> diff_text: "No pending changes.";
     in property <string> disruptive_warning: "";
@@ -43,15 +78,25 @@ export component MainWindow inherits Window {
     callback enabled_changed(bool);
     callback ip_changed(string);
     callback mask_changed(string);
-
-    // Function called from Rust to populate form fields
-    public function set_interface_form(name: string, desc: string, enabled: bool, ip: string, mask: string) {
-        selected_interface = name;
-        edit_description = desc;
-        edit_enabled = enabled;
-        edit_ip = ip;
-        edit_mask = mask;
-    }
+    callback load_vlans() -> [string];
+    callback select_vlan(string);
+    callback save_vlan(string, string, bool);
+    callback edit_vlan_enabled_changed(bool);
+    callback load_routes() -> [string];
+    callback save_route(string, string, string);
+    callback load_acls() -> [string];
+    callback select_acl(string);
+    callback save_acl_rule(string, string, string, string, string);
+    callback load_dhcp_pools() -> [string];
+    callback select_dhcp_pool(string);
+    callback save_dhcp_pool(string, string, string, string, string, string);
+    callback load_nat_config() -> string;
+    callback save_nat_config(string, string, string);
+    callback load_ssh_config() -> string;
+    callback save_ssh_config(bool, string, string, string);
+    callback load_system_config() -> string;
+    callback save_system_config(string, string, string);
+    callback edit_ssh_enabled_changed(bool);
 
     VerticalLayout {
         spacing: 0px;
@@ -190,9 +235,9 @@ export component MainWindow inherits Window {
                                 HorizontalLayout {
                                     spacing: 8px;
                                     Text { text: "Description:"; width: 120px; }
-                                    TextEdit { 
-                                        text: edit_description; 
-                                        width: 300px; 
+                                    TextEdit {
+                                        text: edit_description;
+                                        width: 300px;
                                         edited => { description_changed(self.text); }
                                     }
                                 }
@@ -207,15 +252,15 @@ export component MainWindow inherits Window {
                                 HorizontalLayout {
                                     spacing: 8px;
                                     Text { text: "IPv4 Address:"; width: 120px; }
-                                    TextEdit { 
-                                        text: edit_ip; 
-                                        width: 140px; 
+                                    TextEdit {
+                                        text: edit_ip;
+                                        width: 140px;
                                         edited => { ip_changed(self.text); }
                                     }
                                     Text { text: "Subnet Mask:"; width: 90px; }
-                                    TextEdit { 
-                                        text: edit_mask; 
-                                        width: 140px; 
+                                    TextEdit {
+                                        text: edit_mask;
+                                        width: 140px;
                                         edited => { mask_changed(self.text); }
                                     }
                                 }
@@ -247,6 +292,421 @@ export component MainWindow inherits Window {
                                 }
                                 Rectangle { background: #cccccc; height: 1px; }
                                 Text { text: disruptive_warning; color: #dc3545; }
+                            }
+                        }
+                    }
+                }
+
+                // VLANs tab content
+                GroupBox {
+                    title: "VLAN Configuration";
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Button { text: "Refresh VLANs"; clicked => { load_vlans(); } }
+
+                        ScrollView {
+                            width: 100%;
+                            height: 180px;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                // VLAN rows populated by controller via select_vlan callback
+                            }
+                        }
+
+                        Rectangle { background: #cccccc; height: 1px; }
+
+                        // Edit form for selected VLAN
+                        GroupBox {
+                            title: "Edit VLAN: " + edit_vlan_id;
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "VLAN ID:"; width: 120px; }
+                                    TextEdit { text: edit_vlan_id; width: 100px; enabled: false; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Name:"; width: 120px; }
+                                    TextEdit { text: edit_vlan_name; width: 300px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "State:"; width: 120px; }
+                                    Button { text: "Toggle Enabled"; clicked => { edit_vlan_enabled_changed(!edit_vlan_enabled); } }
+                                    Text { text: "Enabled"; color: #666666; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Button { text: "Save Changes"; clicked => {
+                                        save_vlan(edit_vlan_id, edit_vlan_name, edit_vlan_enabled);
+                                    } }
+                                    Button { text: "Cancel"; clicked => { } }
+                                    Rectangle { width: 100%; height: 1px; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // IP Addressing tab content
+                GroupBox {
+                    title: "IP Addressing";
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Button { text: "Refresh IP Addressing"; clicked => { load_routes(); } }
+
+                        ScrollView {
+                            width: 100%;
+                            height: 180px;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                // IP addressing rows populated by controller via select route callback
+                            }
+                        }
+
+                        Rectangle { background: #cccccc; height: 1px; }
+
+                        // Edit form for route
+                        GroupBox {
+                            title: "Edit Static Route";
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Prefix:"; width: 120px; }
+                                    TextEdit { text: edit_route_prefix; width: 140px; }
+                                    Text { text: "Next Hop:"; width: 90px; }
+                                    TextEdit { text: edit_route_next_hop; width: 140px; }
+                                    Text { text: "Admin Distance:"; width: 100px; }
+                                    TextEdit { text: edit_route_distance; width: 100px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Button { text: "Save Changes"; clicked => {
+                                        save_route(edit_route_prefix, edit_route_next_hop, edit_route_distance);
+                                    } }
+                                    Button { text: "Cancel"; clicked => { } }
+                                    Rectangle { width: 100%; height: 1px; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ACLs tab content
+                GroupBox {
+                    title: "ACL Configuration";
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Button { text: "Refresh ACLs"; clicked => { load_acls(); } }
+
+                        ScrollView {
+                            width: 100%;
+                            height: 180px;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                // ACL rows populated by controller via select_acl callback
+                            }
+                        }
+
+                        Rectangle { background: #cccccc; height: 1px; }
+
+                        // Edit form for ACL rule
+                        GroupBox {
+                            title: "Edit ACL Rule";
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "ACL Name:"; width: 120px; }
+                                    TextEdit { text: edit_acl_name; width: 200px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Action:"; width: 120px; }
+                                    TextEdit { text: edit_acl_action; width: 140px; }
+                                    Text { text: "Protocol:"; width: 90px; }
+                                    TextEdit { text: edit_acl_protocol; width: 140px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Source:"; width: 120px; }
+                                    TextEdit { text: edit_acl_source; width: 140px; }
+                                    Text { text: "Dest:"; width: 90px; }
+                                    TextEdit { text: edit_acl_dest; width: 140px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Button { text: "Add Rule"; clicked => {
+                                        save_acl_rule(edit_acl_name, edit_acl_action, edit_acl_protocol, edit_acl_source, edit_acl_dest);
+                                    } }
+                                    Button { text: "Cancel"; clicked => { } }
+                                    Rectangle { width: 100%; height: 1px; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // DHCP tab content
+                GroupBox {
+                    title: "DHCP Configuration";
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Button { text: "Refresh DHCP Pools"; clicked => { load_dhcp_pools(); } }
+
+                        ScrollView {
+                            width: 100%;
+                            height: 180px;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                // DHCP pools populated by controller via select_dhcp_pool callback
+                            }
+                        }
+
+                        Rectangle { background: #cccccc; height: 1px; }
+
+                        // Edit form for DHCP pool
+                        GroupBox {
+                            title: "Edit DHCP Pool";
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Pool Name:"; width: 120px; }
+                                    TextEdit { text: edit_dhcp_name; width: 200px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Network:"; width: 120px; }
+                                    TextEdit { text: edit_dhcp_network; width: 140px; }
+                                    Text { text: "Mask:"; width: 90px; }
+                                    TextEdit { text: edit_dhcp_mask; width: 140px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Default Router:"; width: 120px; }
+                                    TextEdit { text: edit_dhcp_router; width: 140px; }
+                                    Text { text: "DNS Server:"; width: 90px; }
+                                    TextEdit { text: edit_dhcp_dns; width: 140px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Lease Time:"; width: 120px; }
+                                    TextEdit { text: edit_dhcp_lease; width: 140px; }
+                                    Text { text: "seconds"; color: #666666; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Button { text: "Save Changes"; clicked => {
+                                        save_dhcp_pool(edit_dhcp_name, edit_dhcp_network, edit_dhcp_mask, edit_dhcp_router, edit_dhcp_dns, edit_dhcp_lease);
+                                    } }
+                                    Button { text: "Cancel"; clicked => { } }
+                                    Rectangle { width: 100%; height: 1px; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // NAT tab content
+                GroupBox {
+                    title: "NAT Configuration";
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Button { text: "Refresh NAT"; clicked => { load_nat_config(); } }
+
+                        ScrollView {
+                            width: 100%;
+                            height: 180px;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                // NAT rules populated by controller via load_nat_config callback
+                            }
+                        }
+
+                        Rectangle { background: #cccccc; height: 1px; }
+
+                        // Edit form for NAT
+                        GroupBox {
+                            title: "NAT Configuration";
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "NAT Type:"; width: 120px; }
+                                    TextEdit { text: edit_nat_type; width: 200px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Inside Interface:"; width: 120px; }
+                                    TextEdit { text: edit_nat_inside; width: 200px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Outside Interface:"; width: 120px; }
+                                    TextEdit { text: edit_nat_outside; width: 200px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Button { text: "Save Changes"; clicked => {
+                                        save_nat_config(edit_nat_type, edit_nat_inside, edit_nat_outside);
+                                    } }
+                                    Button { text: "Cancel"; clicked => { } }
+                                    Rectangle { width: 100%; height: 1px; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // SSH / Access tab content
+                GroupBox {
+                    title: "SSH & Device Access";
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Button { text: "Refresh SSH/Access"; clicked => { load_ssh_config(); } }
+
+                        ScrollView {
+                            width: 100%;
+                            height: 180px;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                // SSH settings populated by controller via load_ssh_config callback
+                            }
+                        }
+
+                        Rectangle { background: #cccccc; height: 1px; }
+
+                        // Edit form for SSH
+                        GroupBox {
+                            title: "SSH Configuration";
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "SSH Enabled:"; width: 120px; }
+                                    Button { text: "Toggle"; clicked => { edit_ssh_enabled_changed(!edit_ssh_enabled); } }
+                                    Text { text: "Enabled"; color: #666666; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "SSH Version:"; width: 120px; }
+                                    TextEdit { text: edit_ssh_version; width: 200px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Timeout:"; width: 120px; }
+                                    TextEdit { text: edit_ssh_timeout; width: 140px; }
+                                    Text { text: "seconds"; color: #666666; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Auth Retries:"; width: 120px; }
+                                    TextEdit { text: edit_ssh_retries; width: 140px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Button { text: "Save Changes"; clicked => {
+                                        save_ssh_config(edit_ssh_enabled, edit_ssh_version, edit_ssh_timeout, edit_ssh_retries);
+                                    } }
+                                    Button { text: "Cancel"; clicked => { } }
+                                    Rectangle { width: 100%; height: 1px; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // System tab content
+                GroupBox {
+                    title: "System Settings";
+                    VerticalLayout {
+                        spacing: 8px;
+
+                        Button { text: "Refresh System"; clicked => { load_system_config(); } }
+
+                        ScrollView {
+                            width: 100%;
+                            height: 180px;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                // System settings populated by controller via load_system_config callback
+                            }
+                        }
+
+                        Rectangle { background: #cccccc; height: 1px; }
+
+                        // Edit form for system settings
+                        GroupBox {
+                            title: "System Configuration";
+                            VerticalLayout {
+                                spacing: 8px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Hostname:"; width: 120px; }
+                                    TextEdit { text: edit_system_hostname; width: 200px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "Domain Name:"; width: 120px; }
+                                    TextEdit { text: edit_system_domain; width: 200px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text { text: "DNS Servers:"; width: 120px; }
+                                    TextEdit { text: edit_system_dns; width: 200px; }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Button { text: "Save Changes"; clicked => {
+                                        save_system_config(edit_system_hostname, edit_system_domain, edit_system_dns);
+                                    } }
+                                    Button { text: "Cancel"; clicked => { } }
+                                    Rectangle { width: 100%; height: 1px; }
+                                }
                             }
                         }
                     }

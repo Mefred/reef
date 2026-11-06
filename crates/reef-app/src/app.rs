@@ -12,6 +12,7 @@ slint::include_modules!();
 use slint::{ComponentHandle, ModelRc, SharedString};
 
 use crate::ui::ScreenController;
+use reef_engine::model::{DeviceConfig, InterfaceConfig, InterfaceMode, Ipv4Address};
 use reef_session::{ConnectionConfig, SessionManager};
 
 fn mask_to_prefix_len(mask: std::net::Ipv4Addr) -> Option<u8> {
@@ -54,37 +55,40 @@ impl AppWindow {
             "device-1".to_string(),
         );
 
-        // ---- connect_device: host, port, username, password, enable_secret, transport, ----
+        // ---- connect_device ----
         {
             let ctrl = controller.clone();
             let rt = rt.clone();
             let win = window.clone_strong();
-            window.on_connect_device(move |host: SharedString, port: SharedString, username: SharedString,
-                                           password: SharedString, enable_secret: SharedString,
-                                           transport: SharedString, _extra1: SharedString,
-                                           _extra2: SharedString| {
+            window.on_connect_device(move |host: SharedString,
+                                         port: SharedString,
+                                         username: SharedString,
+                                         password: SharedString,
+                                         enable_secret: SharedString,
+                                         transport: SharedString,
+                                         _extra1: SharedString,
+                                         _extra2: SharedString| {
                 let ctrl = ctrl.clone();
                 let rt = rt.clone();
                 let win = win.clone_strong();
                 rt.block_on(async move {
                     let mut c = ctrl.borrow_mut();
-                    let transport_type = match transport.as_ref() {
-                        "Telnet" => reef_session::TransportType::Telnet,
-                        "Serial" => reef_session::TransportType::Serial,
-                        _ => reef_session::TransportType::Ssh,
+                    let mut config = match transport.as_ref() {
+                        "Telnet" => ConnectionConfig::telnet(&host, &username),
+                        "Serial" => ConnectionConfig::serial(&host),
+                        _ => ConnectionConfig::ssh(&host, &username),
                     };
-                    let port: u16 = port.trim().parse().unwrap_or(22);
-                    let mut config = match transport_type {
-                        reef_session::TransportType::Ssh =>
-                            ConnectionConfig::ssh(&host, &username),
-                        reef_session::TransportType::Telnet =>
-                            ConnectionConfig::telnet(&host, &username),
-                        reef_session::TransportType::Serial =>
-                            ConnectionConfig::serial(&host),
+                    config.port = port.trim().parse().unwrap_or(22);
+                    config.password = if password.is_empty() {
+                        None
+                    } else {
+                        Some(password.to_string())
                     };
-                    config.port = port;
-                    config.password = if password.is_empty() { None } else { Some(password.to_string()) };
-                    config.enable_secret = if enable_secret.is_empty() { None } else { Some(enable_secret.to_string()) };
+                    config.enable_secret = if enable_secret.is_empty() {
+                        None
+                    } else {
+                        Some(enable_secret.to_string())
+                    };
                     match c.connect_device(config).await {
                         Ok(msg) => {
                             win.set_connection_status("connected".into());
@@ -183,17 +187,20 @@ impl AppWindow {
             let win = window.clone_strong();
             window.on_select_interface(move |name: SharedString| {
                 let mut c = ctrl.borrow_mut();
-                c.set_selected_interface(name.to_string());
+                c.set_selected_interface(name.clone().into());
                 let ip_full = c.interface_ip(&name).unwrap_or_default();
                 let mask = c.interface_mask(&name).unwrap_or_default();
                 let desc = c.interface_description(&name).unwrap_or_default();
                 let enabled = c.interface_enabled(&name);
-                // Set Slint form fields via invoke_set_interface_form
-                win.invoke_set_interface_form(name.clone(), desc.into(), enabled, ip_full.into(), mask.into());
+                win.set_selected_interface(name.clone());
+                win.set_edit_description(desc.into());
+                win.set_edit_enabled(enabled);
+                win.set_edit_ip(ip_full.into());
+                win.set_edit_mask(mask.into());
             });
         }
 
-        // ---- save_interface: update desired config + re-diff ----
+        // ---- save_interface ----
         {
             let ctrl = controller.clone();
             let win = window.clone_strong();
@@ -223,72 +230,332 @@ impl AppWindow {
             });
         }
 
-        // ---- description_changed ----
+        // ---- load_vlans ----
         {
             let ctrl = controller.clone();
-            window.on_description_changed(move |text: SharedString| {
-                let mut c = ctrl.borrow_mut();
-                if let Some(name) = c.selected_interface_name() {
-                    let mut dc = c.desired_config_mut();
-                    if let Some(iface) = dc.interfaces.get_mut(&name) {
-                        iface.description = if text.is_empty() { None } else { Some(text.to_string()) };
-                    }
-                }
-                let _ = c;
+            window.on_load_vlans(move || -> slint::ModelRc<SharedString> {
+                let names = ctrl.borrow().load_vlans();
+                let slint_names: slint::VecModel<SharedString> =
+                    names.iter().map(|s| s.as_str().into()).collect();
+                slint::ModelRc::new(Rc::new(slint_names))
             });
         }
 
-        // ---- enabled_changed ----
+        // ---- select_vlan ----
         {
             let ctrl = controller.clone();
-            window.on_enabled_changed(move |enabled: bool| {
+            let win = window.clone_strong();
+            window.on_select_vlan(move |name: SharedString| {
                 let mut c = ctrl.borrow_mut();
-                if let Some(name) = c.selected_interface_name() {
-                    let mut dc = c.desired_config_mut();
-                    if let Some(iface) = dc.interfaces.get_mut(&name) {
-                        iface.enabled = enabled;
-                    }
-                }
-                let _ = c;
+                let (vlan_id, desc, enabled) = c.select_vlan(&name);
+                win.set_selected_vlan(vlan_id.into());
+                win.set_edit_vlan_name(desc.into());
+                win.set_edit_vlan_enabled(enabled);
             });
         }
 
-        // ---- ip_changed ----
+        // ---- save_vlan ----
         {
             let ctrl = controller.clone();
-            window.on_ip_changed(move |text: SharedString| {
+            let win = window.clone_strong();
+            window.on_save_vlan(move |name: SharedString,
+                                     desc: SharedString,
+                                     enabled: bool| {
                 let mut c = ctrl.borrow_mut();
-                if let Some(name) = c.selected_interface_name() {
-                    let mut dc = c.desired_config_mut();
-                    if let Some(iface) = dc.interfaces.get_mut(&name) {
-                        if let Ok(ip_addr) = text.parse::<std::net::Ipv4Addr>() {
-                            iface.ipv4 = Some(reef_engine::model::Ipv4Address {
-                                address: ip_addr,
-                                prefix_len: 24,
-                            });
-                        }
-                    }
+                let diff = c.save_vlan(&name, &desc, enabled);
+                win.set_diff_text(diff.into());
+                if c.is_disruptive() {
+                    win.set_disruptive_warning(
+                        "WARNING: VLAN changes may affect interface connectivity."
+                            .into(),
+                    );
+                } else {
+                    win.set_disruptive_warning("".into());
                 }
-                let _ = c;
             });
         }
 
-        // ---- mask_changed ----
+        // ---- load_routes ----
         {
             let ctrl = controller.clone();
-            window.on_mask_changed(move |text: SharedString| {
+            window.on_load_routes(move || -> slint::ModelRc<SharedString> {
+                let names = ctrl.borrow().load_routes();
+                let slint_names: slint::VecModel<SharedString> =
+                    names.iter().map(|s| s.as_str().into()).collect();
+                slint::ModelRc::new(Rc::new(slint_names))
+            });
+        }
+
+        // ---- save_route ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_save_route(move |prefix: SharedString,
+                                       next_hop: SharedString,
+                                       distance: SharedString| {
                 let mut c = ctrl.borrow_mut();
-                if let Some(name) = c.selected_interface_name() {
-                    let mut dc = c.desired_config_mut();
-                    if let Some(iface) = dc.interfaces.get_mut(&name) {
-                        if let Some(ip) = iface.ipv4.as_mut() {
-                            if let Ok(mask) = text.parse::<std::net::Ipv4Addr>() {
-                                ip.prefix_len = mask_to_prefix_len(mask).unwrap_or(24);
-                            }
-                        }
-                    }
+                let diff = c.save_route(&prefix, &next_hop, &distance, "");
+                win.set_diff_text(diff.into());
+                if c.is_disruptive() {
+                    win.set_disruptive_warning(
+                        "WARNING: Route changes may affect routing connectivity."
+                            .into(),
+                    );
+                } else {
+                    win.set_disruptive_warning("".into());
                 }
-                let _ = c;
+            });
+        }
+
+        // ---- load_acls ----
+        {
+            let ctrl = controller.clone();
+            window.on_load_acls(move || -> slint::ModelRc<SharedString> {
+                let names = ctrl.borrow().load_acls();
+                let slint_names: slint::VecModel<SharedString> =
+                    names.iter().map(|s| s.as_str().into()).collect();
+                slint::ModelRc::new(Rc::new(slint_names))
+            });
+        }
+
+        // ---- select_acl ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_select_acl(move |name: SharedString| {
+                let c = ctrl.borrow();
+                let (acl_name, action, protocol, source, destination) =
+                    c.select_acl(&name);
+                win.set_edit_acl_name(acl_name.into());
+                win.set_edit_acl_action(action.into());
+                win.set_edit_acl_protocol(protocol.into());
+                win.set_edit_acl_source(source.into());
+                win.set_edit_acl_dest(destination.into());
+            });
+        }
+
+        // ---- save_acl_rule ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_save_acl_rule(
+                move |name: SharedString,
+                      action: SharedString,
+                      protocol: SharedString,
+                      source: SharedString,
+                      destination: SharedString| {
+                let mut c = ctrl.borrow_mut();
+                let diff = c.save_acl_rule(
+                    &name,
+                    &action,
+                    &protocol,
+                    &source,
+                    &destination,
+                    "",
+                    "",
+                );
+                win.set_diff_text(diff.into());
+                if c.is_disruptive() {
+                    win.set_disruptive_warning(
+                        "WARNING: ACL changes may affect traffic filtering."
+                            .into(),
+                    );
+                } else {
+                    win.set_disruptive_warning("".into());
+                }
+            });
+        }
+
+        // ---- load_dhcp_pools ----
+        {
+            let ctrl = controller.clone();
+            window.on_load_dhcp_pools(move || -> slint::ModelRc<SharedString> {
+                let names = ctrl.borrow().load_dhcp_pools();
+                let slint_names: slint::VecModel<SharedString> =
+                    names.iter().map(|s| s.as_str().into()).collect();
+                slint::ModelRc::new(Rc::new(slint_names))
+            });
+        }
+
+        // ---- select_dhcp_pool ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_select_dhcp_pool(move |name: SharedString| {
+                let c = ctrl.borrow();
+                let (pool_name, network, mask, router, dns, lease) =
+                    c.select_dhcp_pool(&name);
+                win.set_edit_dhcp_name(pool_name.into());
+                win.set_edit_dhcp_network(network.into());
+                win.set_edit_dhcp_mask(mask.into());
+                win.set_edit_dhcp_router(router.into());
+                win.set_edit_dhcp_dns(dns.into());
+                win.set_edit_dhcp_lease(lease.into());
+            });
+        }
+
+        // ---- save_dhcp_pool ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_save_dhcp_pool(
+                move |name: SharedString,
+                      network: SharedString,
+                      mask: SharedString,
+                      router: SharedString,
+                      dns: SharedString,
+                      lease: SharedString| {
+                    let mut c = ctrl.borrow_mut();
+                    let diff = c.save_dhcp_pool(
+                        &name,
+                        &network,
+                        &mask,
+                        &router,
+                        &dns,
+                        &lease,
+                    );
+                    win.set_diff_text(diff.into());
+                    if c.is_disruptive() {
+                        win.set_disruptive_warning(
+                            "WARNING: DHCP changes may affect IP assignment."
+                                .into(),
+                        );
+                    } else {
+                        win.set_disruptive_warning("".into());
+                    }
+                },
+            );
+        }
+
+        // ---- load_nat_config ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_load_nat_config(move || -> slint::SharedString {
+                let (nat_type, inside, outside) =
+                    ctrl.borrow().load_nat_config();
+                format!("{}|{}|{}", nat_type, inside, outside).into()
+            });
+        }
+
+        // ---- save_nat_config ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_save_nat_config(move |nat_type: SharedString,
+                                            inside: SharedString,
+                                            outside: SharedString| {
+                let mut c = ctrl.borrow_mut();
+                let diff = c.save_nat_config(
+                    &nat_type,
+                    &inside,
+                    &outside,
+                    "",
+                );
+                win.set_diff_text(diff.into());
+                if c.is_disruptive() {
+                    win.set_disruptive_warning(
+                        "WARNING: NAT changes may affect traffic translation."
+                            .into(),
+                    );
+                } else {
+                    win.set_disruptive_warning("".into());
+                }
+            });
+        }
+
+        // ---- load_ssh_config ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_load_ssh_config(move || -> slint::SharedString {
+                let (enabled, version, timeout, retries) =
+                    ctrl.borrow().load_ssh_config();
+                format!("{}|{}|{}|{}", enabled, version, timeout, retries).into()
+            });
+        }
+
+        // ---- save_ssh_config ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_save_ssh_config(
+                move |enabled: bool,
+                      version: SharedString,
+                      timeout: SharedString,
+                      retries: SharedString| {
+                    let mut c = ctrl.borrow_mut();
+                    let diff = c.save_ssh_config(
+                        enabled,
+                        &version,
+                        &timeout,
+                        &retries,
+                    );
+                    win.set_diff_text(diff.into());
+                    if c.is_disruptive() {
+                        win.set_disruptive_warning(
+                            "WARNING: SSH access changes may affect management access."
+                                .into(),
+                        );
+                    } else {
+                        win.set_disruptive_warning("".into());
+                    }
+                },
+            );
+        }
+
+        // ---- edit_ssh_enabled_changed ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_edit_ssh_enabled_changed(move |enabled: bool| {
+                let mut c = ctrl.borrow_mut();
+                let diff = c.save_ssh_config(
+                    enabled,
+                    &win.get_edit_ssh_version(),
+                    &win.get_edit_ssh_timeout(),
+                    &win.get_edit_ssh_retries(),
+                );
+                win.set_diff_text(diff.into());
+                if c.is_disruptive() {
+                    win.set_disruptive_warning(
+                        "WARNING: SSH access changes may affect management access."
+                            .into(),
+                    );
+                } else {
+                    win.set_disruptive_warning("".into());
+                }
+            });
+        }
+
+        // ---- load_system_config ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_load_system_config(move || -> slint::SharedString {
+                let (hostname, domain, dns) = ctrl.borrow().load_system_config();
+                format!("{}|{}|{}", hostname, domain, dns).into()
+            });
+        }
+
+        // ---- save_system_config ----
+        {
+            let ctrl = controller.clone();
+            let win = window.clone_strong();
+            window.on_save_system_config(move |hostname: SharedString,
+                                              domain: SharedString,
+                                              dns: SharedString| {
+                let mut c = ctrl.borrow_mut();
+                let diff = c.save_system_config(&hostname, &domain, &dns);
+                win.set_diff_text(diff.into());
+                if c.is_disruptive() {
+                    win.set_disruptive_warning(
+                        "WARNING: System changes may affect device identification."
+                            .into(),
+                    );
+                } else {
+                    win.set_disruptive_warning("".into());
+                }
             });
         }
 
@@ -372,7 +639,9 @@ impl AppWindow {
                             win.set_disruptive_warning("".into());
                         }
                         Err(e) => {
-                            win.set_connection_status(format!("rollback error: {}", e).into());
+                            win.set_connection_status(
+                                format!("rollback error: {}", e).into(),
+                            );
                         }
                     }
                 });
@@ -388,6 +657,7 @@ impl AppWindow {
     }
 
     pub fn show(self) -> Result<(), slint::PlatformError> {
-        self.window.show()
+        self.window.show()?;
+        slint::run_event_loop()
     }
 }
