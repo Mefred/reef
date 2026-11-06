@@ -13,6 +13,7 @@ use std::time::Duration;
 /// session logic works over SSH, Telnet, or Serial.
 pub struct Session<T: DeviceTransport> {
     transport: T,
+    config: ConnectionConfig,
     authenticated: bool,
     privileged: bool,
     paging_disabled: bool,
@@ -21,9 +22,10 @@ pub struct Session<T: DeviceTransport> {
 }
 
 impl<T: DeviceTransport> Session<T> {
-    pub fn new(transport: T) -> Self {
+    pub fn new(transport: T, config: ConnectionConfig) -> Self {
         Session {
             transport,
+            config,
             authenticated: false,
             privileged: false,
             paging_disabled: false,
@@ -32,12 +34,43 @@ impl<T: DeviceTransport> Session<T> {
         }
     }
 
-    /// Connect using the transport's configured connection. After connecting,
-    /// disables paging and detects the initial prompt.
-    pub async fn connect(&mut self) -> Result<(), Error> {
+    /// Connect using the given configuration. After connecting,
+    /// disables paging, performs login authentication, and detects the initial prompt.
+    pub async fn connect(&mut self, config: &ConnectionConfig) -> Result<(), Error> {
+        self.config = config.clone();
         self.transport.connect().await?;
         self.paging_disabled = true;
+        self.perform_login().await?;
         let _ = self.refresh_prompt().await?;
+        Ok(())
+    }
+
+    /// Perform login authentication (username/password) for transports that require it.
+    async fn perform_login(&mut self) -> Result<(), Error> {
+        // Read the initial banner and look for a username prompt.
+        let out = self.transport.read_available(Duration::from_secs(5)).await?;
+
+        // Check if we're already at a prompt (some devices don't require login)
+        if detect(&out).map_or(false, |p| matches!(p.mode, PromptMode::UserExec | PromptMode::PrivilegedExec)) {
+            return Ok(());
+        }
+
+        // Send username if prompted
+        if out.to_lowercase().contains("username:") || out.to_lowercase().contains("login:") {
+            if self.config.username.is_empty() {
+                return Err(Error::AuthFailed);
+            }
+            self.transport.send(format!("{}\r\n", self.config.username).as_str()).await?;
+            let out2 = self.read_until_prompt().await?;
+            if out2.to_lowercase().contains("password:") {
+                if self.config.password.is_none() {
+                    return Err(Error::AuthFailed);
+                }
+                self.transport.send(format!("{}\r\n", self.config.password.as_ref().unwrap()).as_str()).await?;
+                let _ = self.read_until_prompt().await?;
+            }
+        }
+
         Ok(())
     }
 
@@ -47,7 +80,8 @@ impl<T: DeviceTransport> Session<T> {
         let mut delay = Duration::from_secs(1);
         let mut last_err = None;
         for attempt in 1..=max_retries {
-            match self.connect().await {
+            let config = self.config.clone();
+            match self.connect(&config).await {
                 Ok(()) => return Ok(()),
                 Err(e) => {
                     last_err = Some(e);

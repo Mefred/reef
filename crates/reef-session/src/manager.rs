@@ -55,6 +55,7 @@ pub trait DynSession {
 /// Wraps a concrete `Session<T>` as a `DynSession`.
 struct ConcreteSession<T: DeviceTransport> {
     session: Session<T>,
+    config: Option<ConnectionConfig>,
 }
 
 impl<T: DeviceTransport> DynSession for ConcreteSession<T> {
@@ -63,8 +64,8 @@ impl<T: DeviceTransport> DynSession for ConcreteSession<T> {
         config: ConnectionConfig,
     ) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
         Box::pin(async move {
-            let _ = config;
-            self.session.connect().await
+            self.config = Some(config.clone());
+            self.session.connect(&config).await
         })
     }
 
@@ -156,7 +157,8 @@ impl SessionManager {
         transport: T,
     ) {
         let session: Box<dyn DynSession> = Box::new(ConcreteSession {
-            session: Session::new(transport),
+            session: Session::new(transport, ConnectionConfig::default()),
+            config: None,
         });
         self.sessions.insert(
             device_id.to_string(),

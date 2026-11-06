@@ -21,7 +21,7 @@ pub use apply::ApplyResult;
 pub use config::{ConnectionConfig, HostKeyPolicy};
 pub use error::Error;
 pub use prompt::{detect, PromptMode};
-pub use ssh::SshTransport;
+pub use ssh::{SshTransport, HostKeyStatus};
 pub use telnet::TelnetTransport;
 pub use serial::SerialTransport;
 pub use session::Session;

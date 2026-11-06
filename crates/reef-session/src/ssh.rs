@@ -206,6 +206,32 @@ impl SshTransport {
     }
 }
 
+/// Check the host key for a host against known_hosts without connecting.
+/// Returns information about whether the key is known, changed, or unknown.
+pub fn check_host_key(host: &str) -> HostKeyStatus {
+    let known_hosts_path = ConnectionConfig::known_hosts_path();
+    let known = std::fs::read_to_string(&known_hosts_path).unwrap_or_default();
+
+    let host_entry = format!("{} ", host);
+    for line in known.lines() {
+        if line.starts_with(&host_entry) {
+            // Parse the existing entry: host key_type key_hex
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 3 {
+                return HostKeyStatus::Known {
+                    key_type: parts[1].to_string(),
+                    key_hex: parts[2].to_string(),
+                };
+            }
+            return HostKeyStatus::Known {
+                key_type: "unknown".to_string(),
+                key_hex: String::new(),
+            };
+        }
+    }
+    HostKeyStatus::Unknown
+}
+
 /// Verify the SSH host key against known_hosts according to policy.
 fn verify_host_key(sess: &ssh2::Session, config: &ConnectionConfig) -> Result<(), Error> {
     let (key, key_type) = sess.host_key().unwrap_or((&[], ssh2::HostKeyType::Unknown));
@@ -226,6 +252,25 @@ fn verify_host_key(sess: &ssh2::Session, config: &ConnectionConfig) -> Result<()
 
     let host_entry = format!("{} ", config.host);
     let already_known = known.lines().any(|l| l.starts_with(&host_entry));
+
+    // If already known, verify the key matches
+    if already_known {
+        for line in known.lines() {
+            if line.starts_with(&host_entry) {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 3 {
+                    let stored_hex = parts[2];
+                    if stored_hex != key_hex {
+                        return Err(Error::HostKeyChanged(format!(
+                            "host key for {} has changed (stored: {}, current: {})",
+                            config.host, stored_hex, key_hex
+                        )));
+                    }
+                }
+                break;
+            }
+        }
+    }
 
     match config.host_key_policy {
         crate::config::HostKeyPolicy::Accept => {
@@ -253,14 +298,23 @@ fn verify_host_key(sess: &ssh2::Session, config: &ConnectionConfig) -> Result<()
         }
         crate::config::HostKeyPolicy::Reject => {
             if !already_known {
-                return Err(Error::HostKey(format!(
-                    "unknown host key for {} (type {}): {}",
+                return Err(Error::HostKeyEnrollmentRequired(format!(
+                    "unknown host key for {} (type {}): {}. Enroll the host key before connecting.",
                     config.host, key_type_str, key_hex
                 )));
             }
             Ok(())
         }
     }
+}
+
+/// Status of a host key in known_hosts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostKeyStatus {
+    /// The host key is known and matches.
+    Known { key_type: String, key_hex: String },
+    /// The host is not in known_hosts.
+    Unknown,
 }
 
 fn append_known_host(

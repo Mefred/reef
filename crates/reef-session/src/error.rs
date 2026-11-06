@@ -20,6 +20,10 @@ pub enum Error {
     Parse(String),
     #[error("host key verification failed: {0}")]
     HostKey(String),
+    #[error("host key changed: {0}")]
+    HostKeyChanged(String),
+    #[error("host key enrollment required: {0}")]
+    HostKeyEnrollmentRequired(String),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }
