@@ -280,6 +280,39 @@ export component MainWindow inherits Window {
     in property <string> device_version: "-";
     in property <string> device_uptime: "-";
     in property <bool> is_connected: false;
+    in property <string> selected_interface: "";
+    in property <string> edit_description: "";
+    in property <bool> edit_enabled: true;
+    in property <string> edit_ip: "";
+    in property <string> edit_mask: "255.255.255.0";
+    in property <string> selected_vlan: "";
+    in property <string> edit_vlan_id: "";
+    in property <string> edit_vlan_name: "";
+    in property <bool> edit_vlan_enabled: true;
+    in property <string> edit_route_prefix: "";
+    in property <string> edit_route_next_hop: "";
+    in property <string> edit_route_distance: "";
+    in property <string> edit_acl_name: "";
+    in property <string> edit_acl_action: "permit";
+    in property <string> edit_acl_protocol: "ip";
+    in property <string> edit_acl_source: "any";
+    in property <string> edit_acl_dest: "any";
+    in property <string> edit_dhcp_name: "";
+    in property <string> edit_dhcp_network: "";
+    in property <string> edit_dhcp_mask: "255.255.255.0";
+    in property <string> edit_dhcp_router: "";
+    in property <string> edit_dhcp_dns: "";
+    in property <string> edit_dhcp_lease: "";
+    in property <string> edit_nat_type: "static";
+    in property <string> edit_nat_inside: "";
+    in property <string> edit_nat_outside: "";
+    in property <bool> edit_ssh_enabled: true;
+    property <string> edit_ssh_version: "2";
+    property <string> edit_ssh_timeout: "";
+    property <string> edit_ssh_retries: "";
+    in property <string> edit_system_hostname: "";
+    in property <string> edit_system_domain: "";
+    in property <string> edit_system_dns: "";
     in property <string> diff_text: "No pending changes.";
     in property <string> disruptive_warning: "";
     in property <bool> has_pending_changes: false;
@@ -318,6 +351,7 @@ export component MainWindow inherits Window {
 
     callback load_ssh_config() -> string;
     callback save_ssh_config(bool, string, string, string);
+    callback edit_ssh_enabled_changed(bool);
 
     callback load_system_config() -> string;
     callback save_system_config(string, string, string);
@@ -421,12 +455,16 @@ export component MainWindow inherits Window {
                 VerticalLayout {
                     spacing: 0px;
 
-                    Text {
-                        text: "Configuration";
-                        font-size: 12px;
-                        color: #6c757d;
-                        font-weight: 700;
+                    VerticalLayout {
                         padding: 16px;
+                        spacing: 0px;
+
+                        Text {
+                            text: "Configuration";
+                            font-size: 12px;
+                            color: #6c757d;
+                            font-weight: 700;
+                        }
                     }
 
                     VerticalLayout {
