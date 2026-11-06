@@ -16,10 +16,14 @@ pub enum Error {
     Timeout,
     #[error("parse error: {0}")]
     Parse(String),
+    #[error("host key verification failed: {0}")]
+    HostKey(String),
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        Error::Transport(e.to_string())
+impl From<ssh2::Error> for Error {
+    fn from(e: ssh2::Error) -> Error {
+        Error::Transport(format!("ssh2: {}", e))
     }
 }

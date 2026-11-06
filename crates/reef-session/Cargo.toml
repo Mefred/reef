@@ -9,4 +9,15 @@ rust-version = "1.85"
 reef-engine = { path = "../reef-engine" }
 reef-logging = { path = "../reef-logging" }
 tokio = { version = "1", features = ["full"] }
+tokio-serial = "5"
+ssh2 = "0.9"
 thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+directories = "5"
+lazy_static = "1"
+regex = "1"
+hex = "0.4"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio-test = "0.3"

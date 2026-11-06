@@ -14,7 +14,7 @@ mod acls;
 mod dhcp;
 mod nat;
 
-pub use version::parse_version;
+pub use version::{parse_inventory, parse_version};
 pub use interfaces::parse_interfaces;
 pub use vlans::parse_vlans;
 pub use running_config::parse_running_config;

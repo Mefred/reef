@@ -1,9 +1,10 @@
 //! Common transport abstraction.
 
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// Type of transport in use.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TransportType {
     Ssh,
     Telnet,

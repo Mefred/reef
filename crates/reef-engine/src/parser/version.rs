@@ -102,6 +102,11 @@ pub fn merge_inventory(identity: &mut DeviceIdentity, output: &str) {
     }
 }
 
+/// Merge `show inventory` fields into an existing `DeviceIdentity` (convenience wrapper).
+pub fn parse_inventory(identity: &mut DeviceIdentity, output: &str) {
+    merge_inventory(identity, output);
+}
+
 fn extract_after(line: &str, key: &str) -> String {
     line.split(key)
         .nth(1)

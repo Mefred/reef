@@ -3,17 +3,23 @@
 //! This crate owns the `DeviceTransport` trait and the SSH/Telnet/Serial
 //! implementations. It is transport-agnostic at the session layer.
 
-mod transport;
-mod session;
-mod manager;
+mod config;
+mod error;
+mod prompt;
 mod ssh;
 mod telnet;
 mod serial;
-mod error;
+mod transport;
+mod session;
+mod manager;
 
+// Re-export public API.
+pub use config::{ConnectionConfig, HostKeyPolicy};
 pub use error::Error;
-
-pub use transport::DeviceTransport;
+pub use prompt::{detect, PromptMode};
+pub use ssh::SshTransport;
+pub use telnet::TelnetTransport;
+pub use serial::SerialTransport;
 pub use session::Session;
 pub use manager::SessionManager;
 
