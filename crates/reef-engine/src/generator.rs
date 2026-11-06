@@ -135,6 +135,8 @@ pub fn generate(change_set: &ChangeSet) -> CommandBatch {
                         AclType::Standard => "standard",
                         AclType::Extended => "extended",
                     };
+                    // IOS XE adds rules to existing ACLs, so delete and recreate
+                    commands.push(format!("no ip access-list {}", name));
                     commands.push(format!("ip access-list {} {}", type_str, acl.name));
                     for rule in &acl.rules {
                         commands.push(emit_acl_rule(rule));

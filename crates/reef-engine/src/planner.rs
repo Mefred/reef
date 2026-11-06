@@ -132,15 +132,40 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
         }
     }
 
-    // Routes (parallel vectors)
-    for (i, desired_route) in desired.ip_routes.iter().enumerate() {
-        let found = current.ip_routes.iter().any(|cr| cr == desired_route);
-        cs.ip_routes.push(if found {
-            ChangeOp::NoChange
-        } else {
-            ChangeOp::Add
-        });
+    // Routes (compare by prefix)
+    let desired_route_map: HashMap<ipnet::IpNet, StaticRoute> = desired
+        .ip_routes
+        .iter()
+        .map(|r| (r.prefix, r.clone()))
+        .collect();
+    let current_route_map: HashMap<ipnet::IpNet, StaticRoute> = current
+        .ip_routes
+        .iter()
+        .map(|r| (r.prefix, r.clone()))
+        .collect();
+
+    // Process desired routes (adds and modifies)
+    for desired_route in &desired.ip_routes {
+        match current_route_map.get(&desired_route.prefix) {
+            Some(current_route) => {
+                if current_route == desired_route {
+                    cs.ip_routes.push(ChangeOp::NoChange);
+                } else {
+                    // Same prefix, different next-hop or admin_distance -> Modify
+                    cs.ip_routes.push(ChangeOp::Modify);
+                }
+            }
+            None => cs.ip_routes.push(ChangeOp::Add),
+        }
         cs.routes.push(desired_route.clone());
+    }
+
+    // Process current routes not in desired (removals)
+    for current_route in &current.ip_routes {
+        if !desired_route_map.contains_key(&current_route.prefix) {
+            cs.ip_routes.push(ChangeOp::Remove);
+            cs.routes.push(current_route.clone());
+        }
     }
 
     // ACLs

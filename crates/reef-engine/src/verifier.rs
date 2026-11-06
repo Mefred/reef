@@ -122,6 +122,11 @@ pub fn verify(current: &DeviceConfig, desired: &DeviceConfig) -> VerificationRes
         }
     }
 
+    // Compare NAT
+    if current.nat != desired.nat {
+        mismatches.push("nat: config differs".to_string());
+    }
+
     if mismatches.is_empty() {
         VerificationResult::Verified
     } else {
