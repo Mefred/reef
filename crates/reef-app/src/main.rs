@@ -4,6 +4,7 @@
 //! reef-session transport sessions.
 
 mod app;
+mod ui;
 
 use reef_logging::init;
 

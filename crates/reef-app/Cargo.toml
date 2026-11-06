@@ -7,11 +7,9 @@ rust-version = "1.85"
 
 [dependencies]
 reef-engine = { path = "../reef-engine" }
-reef-session = { path = "../reef-session" }
-reef-storage = { path = "../reef-storage" }
 reef-logging = { path = "../reef-logging" }
-slint = "1.8"
 tracing = "0.1"
+slint = "1.8"
 
 [build-dependencies]
 slint-build = "1.8"
