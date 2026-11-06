@@ -84,6 +84,13 @@ impl ScreenController {
         &self.last_diff
     }
 
+    /// Whether the current desired config would be disruptive (e.g. changing
+    /// an interface that has an IP address — potential management-interface
+    /// impact).
+    pub fn is_disruptive(&self) -> bool {
+        self.desired_config.interfaces.values().any(|i| i.ipv4.is_some())
+    }
+
     /// Get the list of interface names.
     pub fn interface_names(&self) -> Vec<String> {
         self.desired_config.interfaces.keys().cloned().collect()
@@ -116,6 +123,16 @@ impl ScreenController {
     pub fn generate_batch(&self) -> reef_engine::generator::CommandBatch {
         let change_set = plan(&self.current_config, &self.desired_config);
         generate(&change_set)
+    }
+
+    /// Get a reference to the current (pre-change) config.
+    pub fn current_config(&self) -> &DeviceConfig {
+        &self.current_config
+    }
+
+    /// Get a reference to the desired config.
+    pub fn desired_config(&self) -> &DeviceConfig {
+        &self.desired_config
     }
 
     /// Returns whether a live session is available for apply.

@@ -80,15 +80,49 @@ impl AppWindow {
                                              ip: SharedString,
                                              mask: SharedString| {
                 let mut c = ctrl.borrow_mut();
-                let diff = c.update_interface(
+                let _diff = c.update_interface(
                     &name,
                     if desc.is_empty() { None } else { Some(desc.into()) },
                     enabled,
                     if ip.is_empty() { None } else { Some(&ip) },
                     if mask.is_empty() { None } else { Some(&mask) },
                 );
-                // Diff is stored in controller; UI reads via show_diff
-                let _ = diff;
+                // Diff stored in controller; UI binding pending Slint property fix.
+            });
+        }
+
+        // ---- preview_config ----
+        {
+            let ctrl = controller.clone();
+            window.on_preview_config(move || {
+                let _diff = ctrl.borrow().diff().to_string();
+            });
+        }
+
+        // ---- confirm_disruptive ----
+        {
+            let ctrl = controller.clone();
+            window.on_confirm_disruptive(move |_confirmation: SharedString| {
+                let current = ctrl.borrow().current_config().clone();
+                let desired = ctrl.borrow().desired_config().clone();
+                let _change_set = reef_engine::planner::plan(&current, &desired);
+            });
+        }
+
+        // ---- apply_config ----
+        {
+            let ctrl = controller.clone();
+            window.on_apply_config(move || {
+                let c = ctrl.borrow();
+                let _is_disruptive = c.is_disruptive();
+                let _diff = c.diff().to_string();
+            });
+        }
+
+        // ---- rollback_config ----
+        {
+            window.on_rollback_config(move || {
+                // Placeholder - live rollback requires device session (Phase 6+)
             });
         }
 

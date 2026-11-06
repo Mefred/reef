@@ -18,6 +18,13 @@ export component MainWindow inherits Window {
     property <string> edit_ip: "";
     property <string> edit_mask: "255.255.255.0";
 
+    // Diff preview
+    property <string> diff_text: "No pending changes.";
+
+    // Safety state
+    property <bool> disruptive_warning_visible: false;
+    property <string> disruptive_warning: "";
+
     // --- Callbacks wired to Rust controller ---
     callback connect_device();
     callback disconnect_device();
@@ -26,6 +33,10 @@ export component MainWindow inherits Window {
     callback load_interfaces() -> [string];
     callback select_interface(string);
     callback save_interface(string, string, bool, string, string);
+    callback preview_config();
+    callback apply_config();
+    callback rollback_config();
+    callback confirm_disruptive(string);
     callback show_diff(string);
 
     VerticalLayout {
@@ -187,9 +198,16 @@ export component MainWindow inherits Window {
                             VerticalLayout {
                                 spacing: 8px;
                                 TextEdit {
-                                    text: "No pending changes.";
+                                    text: diff_text;
                                     height: 120px;
                                 }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Button { text: "Preview Changes"; clicked => { preview_config(); } }
+                                    Rectangle { width: 100%; height: 1px; }
+                                }
+                                Rectangle { background: #cccccc; height: 1px; }
+                                Text { text: disruptive_warning; color: #dc3545; }
                             }
                         }
                     }
@@ -203,9 +221,9 @@ export component MainWindow inherits Window {
             spacing: 8px;
             padding: 8px;
             Rectangle { width: 100%; height: 1px; }
-            Button { text: "Preview"; enabled: is_connected; clicked => { } }
-            Button { text: "Apply"; enabled: is_connected; clicked => { } }
-            Button { text: "Rollback"; enabled: is_connected; clicked => { } }
+            Button { text: "Preview"; enabled: is_connected; clicked => { preview_config(); } }
+            Button { text: "Apply"; enabled: is_connected; clicked => { apply_config(); } }
+            Button { text: "Rollback"; enabled: is_connected; clicked => { rollback_config(); } }
         }
     }
 }
