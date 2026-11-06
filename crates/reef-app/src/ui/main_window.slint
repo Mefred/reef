@@ -5,11 +5,11 @@ export component MainWindow inherits Window {
     width: 1200px;
     height: 800px;
 
-    property <string> connection_status: "disconnected";
-    property <string> device_hostname: "-";
-    property <string> device_model: "-";
-    property <string> device_version: "-";
-    property <bool> is_connected: false;
+    in property <string> connection_status: "disconnected";
+    in property <string> device_hostname: "-";
+    in property <string> device_model: "-";
+    in property <string> device_version: "-";
+    in property <bool> is_connected: false;
 
     property <string> selected_interface: "";
     property <string> edit_description: "";
@@ -17,8 +17,8 @@ export component MainWindow inherits Window {
     property <string> edit_ip: "";
     property <string> edit_mask: "255.255.255.0";
 
-    property <string> diff_text: "No pending changes.";
-    property <string> disruptive_warning: "";
+    in property <string> diff_text: "No pending changes.";
+    in property <string> disruptive_warning: "";
 
     // --- Callbacks from UI to Rust ---
     callback connect_device(string, string, string); // host, username, password

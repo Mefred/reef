@@ -246,6 +246,28 @@ impl SessionManager {
         guard.send_config_batch(cmds).await
     }
 
+    /// Enter global configuration mode.
+    pub async fn config_terminal(&self, device_id: &str) -> Result<(), Error> {
+        let session = self
+            .sessions
+            .get(device_id)
+            .ok_or_else(|| Error::NotFound(format!("no session for device {}", device_id)))?;
+        let mut guard = session.borrow_mut();
+        guard.send_config("configure terminal\r\n").await?;
+        Ok(())
+    }
+
+    /// Exit configuration mode back to privileged EXEC.
+    pub async fn exit_config(&self, device_id: &str) -> Result<(), Error> {
+        let session = self
+            .sessions
+            .get(device_id)
+            .ok_or_else(|| Error::NotFound(format!("no session for device {}", device_id)))?;
+        let mut guard = session.borrow_mut();
+        guard.send_config("end\r\n").await?;
+        Ok(())
+    }
+
     /// Identify the device.
     pub async fn identify(&self, device_id: &str) -> Result<DeviceIdentity, Error> {
         let session = self

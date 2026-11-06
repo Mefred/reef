@@ -1,18 +1,23 @@
-//! Screen controller: bridges Slint UI with reef-engine (planning/generation).
+//! Screen controller: bridges Slint UI with reef-engine (planning/generation)
+//! and reef-session (device sessions).
 //!
 //! The controller owns the desired config state, runs plan → diff, and
-//! prepares command batches for apply. Device sessions are optional for
-//! UI-only operation (Phase 5); live apply requires a connected session.
+//! coordinates live device operations through the session manager.
 
 use reef_engine::model::{DeviceConfig, InterfaceConfig, InterfaceMode, Ipv4Address};
-use reef_engine::planner::{plan, ChangeSet};
+use reef_engine::planner::{plan, ChangeOp, ChangeSet};
 use reef_engine::generator::generate;
 use reef_engine::verifier::{verify, VerificationResult};
+use reef_session::{ConnectionConfig, HostKeyPolicy, SessionManager, TelnetTransport, TransportType};
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 /// Controller for a single device's configuration screens.
 pub struct ScreenController {
+    session_manager: Option<Rc<RefCell<SessionManager>>>,
+    device_id: Option<String>,
     current_config: DeviceConfig,
     desired_config: DeviceConfig,
     last_diff: String,
@@ -23,6 +28,8 @@ pub struct ScreenController {
 impl ScreenController {
     pub fn new(current_config: DeviceConfig) -> Self {
         ScreenController {
+            session_manager: None,
+            device_id: None,
             current_config: current_config.clone(),
             desired_config: current_config,
             last_diff: String::new(),
@@ -31,8 +38,95 @@ impl ScreenController {
         }
     }
 
+    /// Attach a session manager and device ID for live operations.
+    pub fn bind_session(
+        &mut self,
+        session_manager: Rc<RefCell<SessionManager>>,
+        device_id: String,
+    ) {
+        self.session_manager = Some(session_manager);
+        self.device_id = Some(device_id);
+        self.has_session = true;
+    }
+
+    /// Clear the session binding.
+    pub fn unbind_session(&mut self) {
+        self.session_manager = None;
+        self.device_id = None;
+        self.has_session = false;
+    }
+
     pub fn set_has_session(&mut self, has: bool) {
         self.has_session = has;
+    }
+
+    /// Get the device ID.
+    pub fn device_id(&self) -> Option<String> {
+        self.device_id.clone()
+    }
+
+    /// Connect to a device using the given configuration.
+    pub async fn connect_device(&mut self, config: ConnectionConfig) -> Result<String, reef_session::Error> {
+        let sm = self.session_manager.as_ref().ok_or_else(|| {
+            reef_session::Error::Transport("no session manager".to_string())
+        })?;
+        let device_id = self.device_id.as_deref().unwrap_or("device").to_string();
+
+        sm.borrow_mut().register(&device_id, TelnetTransport::new(config.clone()));
+
+        sm.borrow_mut().connect(&device_id, config).await?;
+
+        // Identify the device
+        let identity = sm.borrow_mut().identify(&device_id).await?;
+        let hostname = identity.hostname.clone();
+        self.current_config.hostname = Some(hostname.clone());
+
+        // Fetch running-config
+        let running_out = sm.borrow_mut().send_command(&device_id, "show running-config\r\n").await?;
+        let parsed = reef_engine::parser::parse_running_config(&running_out).model;
+
+        // Merge parsed config into current_config (preserve identity fields)
+        self.current_config = parsed;
+        self.current_config.hostname = Some(hostname);
+
+        // Reset desired config to current
+        self.desired_config = self.current_config.clone();
+
+        self.last_diff = String::new();
+        self.has_session = true;
+
+        Ok(format!("Connected to {} ({})", identity.hostname, identity.iosxe_version))
+    }
+
+    /// Disconnect from the device.
+    pub async fn disconnect_device(&mut self) -> Result<(), reef_session::Error> {
+        if let Some(sm) = &self.session_manager {
+            if let Some(device_id) = &self.device_id {
+                sm.borrow_mut().disconnect(device_id).await?;
+            }
+        }
+        self.has_session = false;
+        Ok(())
+    }
+
+    /// Refresh device config from the live device.
+    pub async fn refresh_config(&mut self) -> Result<String, reef_session::Error> {
+        let sm = self.session_manager.as_ref().ok_or_else(|| {
+            reef_session::Error::Transport("no session manager".to_string())
+        })?;
+        let device_id = self.device_id.as_deref().ok_or_else(|| {
+            reef_session::Error::Transport("no device id".to_string())
+        })?;
+
+        let running_out = sm.borrow_mut().send_command(device_id, "show running-config\r\n").await?;
+        let parsed = reef_engine::parser::parse_running_config(&running_out).model;
+        self.current_config = parsed;
+
+        // Re-plan diff
+        let change_set = plan(&self.current_config, &self.desired_config);
+        self.last_diff = reef_engine::diff::render(&change_set);
+
+        Ok(self.last_diff.clone())
     }
 
     /// Handle an interface edit from the UI: update desired config, re-plan,
@@ -125,6 +219,120 @@ impl ScreenController {
         generate(&change_set)
     }
 
+    /// Apply the planned changes to the live device.
+    pub async fn apply_changes(&mut self) -> Result<String, reef_session::Error> {
+        let sm = self.session_manager.as_ref().ok_or_else(|| {
+            reef_session::Error::Transport("no session manager".to_string())
+        })?;
+        let device_id = self.device_id.as_deref().ok_or_else(|| {
+            reef_session::Error::Transport("no device id".to_string())
+        })?;
+
+        let change_set = plan(&self.current_config, &self.desired_config);
+
+        // Check for disruptive changes
+        let is_disruptive = change_set.affects_connectivity;
+
+        // Generate commands
+        let batch = generate(&change_set);
+
+        if batch.commands.is_empty() {
+            return Ok("No changes to apply.".to_string());
+        }
+
+        // Backup running-config before applying
+        {
+            let sm = &*sm.borrow();
+            let _ = sm.save_config(device_id).await;
+
+            // Send commands
+            sm.config_terminal(device_id).await?;
+            for cmd in &batch.commands {
+                sm.send_config(device_id, cmd).await?;
+            }
+            sm.exit_config(device_id).await?;
+
+            // Save to startup-config if disruptive
+            if is_disruptive || change_set.affects_connectivity {
+                sm.save_config(device_id).await?;
+            }
+
+            // Verify by re-reading running-config
+            let running_out = sm.send_command(device_id, "show running-config\r\n").await?;
+            let parsed = reef_engine::parser::parse_running_config(&running_out).model;
+            let result = verify(&parsed, &self.desired_config);
+            self.last_verification = Some(result.clone());
+
+            if result.is_success() {
+                self.current_config = self.desired_config.clone();
+                self.last_diff = String::new();
+                Ok(format!("Apply successful. Verification: verified."))
+            } else {
+                Err(reef_session::Error::Transport(format!(
+                    "Apply failed verification: {:?}", result
+                )))
+            }
+        }
+    }
+
+    /// Roll back the last applied changes.
+    pub async fn rollback_changes(&mut self) -> Result<String, reef_session::Error> {
+        let sm = self.session_manager.as_ref().ok_or_else(|| {
+            reef_session::Error::Transport("no session manager".to_string())
+        })?;
+        let device_id = self.device_id.as_deref().ok_or_else(|| {
+            reef_session::Error::Transport("no device id".to_string())
+        })?;
+
+        // Rollback: restore the current_config (pre-apply state) by generating
+        // reverse commands from the current desired back to current.
+        let reverse_cs = plan(&self.desired_config, &self.current_config);
+        let reverse_batch = generate(&reverse_cs);
+
+        if reverse_batch.commands.is_empty() {
+            return Ok("Nothing to roll back.".to_string());
+        }
+
+        {
+            let sm = &*sm.borrow();
+            sm.config_terminal(device_id).await?;
+            for cmd in &reverse_batch.commands {
+                sm.send_config(device_id, cmd).await?;
+            }
+            sm.exit_config(device_id).await?;
+            sm.save_config(device_id).await?;
+
+            // Verify rollback
+            let running_out = sm.send_command(device_id, "show running-config\r\n").await?;
+            let parsed = reef_engine::parser::parse_running_config(&running_out).model;
+            let result = verify(&parsed, &self.current_config);
+
+            if result.is_success() {
+                self.desired_config = self.current_config.clone();
+                self.last_diff = String::new();
+                Ok("Rollback successful. Configuration restored.".to_string())
+            } else {
+                Err(reef_session::Error::Transport(format!(
+                    "Rollback verification failed: {:?}", result
+                )))
+            }
+        }
+    }
+
+    /// Save running-config to startup-config on the device.
+    pub async fn save_config(&mut self) -> Result<(), reef_session::Error> {
+        let sm = self.session_manager.as_ref().ok_or_else(|| {
+            reef_session::Error::Transport("no session manager".to_string())
+        })?;
+        let device_id = self.device_id.as_deref().ok_or_else(|| {
+            reef_session::Error::Transport("no device id".to_string())
+        })?;
+        {
+            let sm = &*sm.borrow();
+            sm.save_config(device_id).await
+        }
+    }
+
     /// Get a reference to the current (pre-change) config.
     pub fn current_config(&self) -> &DeviceConfig {
         &self.current_config
@@ -138,6 +346,11 @@ impl ScreenController {
     /// Returns whether a live session is available for apply.
     pub fn has_session(&self) -> bool {
         self.has_session
+    }
+
+    /// Get the last verification result.
+    pub fn last_verification(&self) -> Option<&VerificationResult> {
+        self.last_verification.as_ref()
     }
 }
 
