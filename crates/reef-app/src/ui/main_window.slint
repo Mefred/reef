@@ -1,0 +1,163 @@
+import { Button, GroupBox, ScrollView, TextEdit } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    title: "Reef - Cisco IOS XE Configuration Manager";
+    width: 1200px;
+    height: 800px;
+
+    property <string> connection_status: "disconnected";
+    property <string> device_hostname: "Switch1";
+    property <string> device_model: "C9300-24P";
+    property <string> device_version: "17.12.0a";
+    property <bool> is_connected: false;
+
+    VerticalLayout {
+        spacing: 0px;
+
+        // --- Top toolbar ---
+        HorizontalLayout {
+            spacing: 8px;
+            padding: 8px;
+
+            Text { text: "Reef"; font-size: 18px; }
+
+            Button { text: "Add Device"; clicked => { } }
+            Button { text: "Connect"; enabled: !is_connected; clicked => { } }
+            Button { text: "Disconnect"; enabled: is_connected; clicked => { } }
+
+            Rectangle { width: 100%; height: 1px; }
+
+            Button { text: "Settings"; clicked => { } }
+        }
+
+        Rectangle { background: #cccccc; height: 1px; }
+
+        // --- Main split: sidebar + content ---
+        HorizontalLayout {
+            spacing: 0px;
+            height: parent.height - 60px;
+
+            // --- Sidebar ---
+            VerticalLayout {
+                width: 260px;
+                spacing: 8px;
+                padding: 8px;
+
+                Text { text: "Devices"; font-size: 14px; }
+
+                ScrollView {
+                    height: 200px;
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "Switch1"; }
+                        Text { text: "Router2"; }
+                    }
+                }
+
+                Rectangle { background: #cccccc; height: 1px; }
+
+                Text { text: "Status"; font-size: 12px; }
+                Text { text: connection_status; color: #666666; }
+
+                Rectangle { background: #cccccc; height: 1px; }
+
+                Text { text: "Quick Actions"; font-size: 12px; }
+                Button { text: "Backup Config"; enabled: is_connected; clicked => { } }
+                Button { text: "Refresh"; enabled: is_connected; clicked => { } }
+            }
+
+            Rectangle { background: #cccccc; width: 1px; }
+
+            // --- Content area ---
+            VerticalLayout {
+                spacing: 8px;
+                padding: 8px;
+                width: parent.width - 260px;
+
+                // Device header
+                HorizontalLayout {
+                    spacing: 16px;
+                    Text { text: device_hostname; font-size: 20px; }
+                    Text { text: "|"; color: #999999; }
+                    Text { text: device_model; color: #666666; }
+                    Text { text: "|"; color: #999999; }
+                    Text { text: device_version; color: #666666; }
+                    Rectangle { width: 100%; height: 1px; }
+                    Text { text: connection_status; }
+                }
+
+                Rectangle { background: #cccccc; height: 1px; }
+
+                // Tab bar
+                HorizontalLayout {
+                    spacing: 0px;
+                    Button { text: "Overview"; width: 100px; }
+                    Button { text: "Interfaces"; width: 100px; }
+                    Button { text: "IP Addressing"; width: 120px; }
+                    Button { text: "VLANs"; width: 80px; }
+                    Button { text: "Routing"; width: 100px; }
+                    Button { text: "ACLs"; width: 80px; }
+                    Button { text: "DHCP"; width: 80px; }
+                    Button { text: "NAT"; width: 80px; }
+                    Button { text: "SSH / Access"; width: 120px; }
+                    Button { text: "System"; width: 100px; }
+                    Rectangle { width: 100%; height: 1px; }
+                }
+
+                Rectangle { background: #cccccc; height: 1px; }
+
+                // Content panels
+                ScrollView {
+                    width: 100%;
+                    height: parent.height - 200px;
+
+                    VerticalLayout {
+                        spacing: 16px;
+
+                        GroupBox {
+                            title: "Device Identity";
+                            VerticalLayout {
+                                spacing: 8px;
+                                Text { text: "Hostname: " + device_hostname; }
+                                Text { text: "Model: " + device_model; }
+                                Text { text: "IOS XE Version: " + device_version; }
+                                Text { text: "Serial: " + "-"; }
+                                Text { text: "Uptime: " + "-"; }
+                            }
+                        }
+
+                        GroupBox {
+                            title: "Interface Summary";
+                            VerticalLayout {
+                                spacing: 8px;
+                                Text { text: "Interface table would be rendered here."; color: #999999; }
+                            }
+                        }
+
+                        GroupBox {
+                            title: "Configuration Preview";
+                            VerticalLayout {
+                                spacing: 8px;
+                                TextEdit {
+                                    text: "No pending changes.";
+                                    height: 150px;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Bottom: Apply / Rollback bar ---
+        Rectangle { background: #eeeeee; height: 1px; }
+        HorizontalLayout {
+            spacing: 8px;
+            padding: 8px;
+            Rectangle { width: 100%; height: 1px; }
+            Button { text: "Preview"; enabled: is_connected; clicked => { } }
+            Button { text: "Apply"; enabled: is_connected; clicked => { } }
+            Button { text: "Rollback"; enabled: is_connected; clicked => { } }
+        }
+    }
+}

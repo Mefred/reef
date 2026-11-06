@@ -10,9 +10,11 @@ reef-engine = { path = "../reef-engine" }
 reef-session = { path = "../reef-session" }
 reef-storage = { path = "../reef-storage" }
 reef-logging = { path = "../reef-logging" }
-tracing = "0.1"
 slint = "1.8"
-tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+
+[build-dependencies]
+slint-build = "1.8"
 
 [[bin]]
 name = "reef"

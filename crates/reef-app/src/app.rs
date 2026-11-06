@@ -1,9 +1,20 @@
-//! Slint application wiring (placeholder for Phase 4).
+//! Slint application wiring (Phase 4).
+//!
+//! Wraps the generated Slint `MainWindow` component.
 
-pub struct App;
+slint::include_modules!();
 
-impl App {
-    pub fn new() -> Self {
-        App
+pub struct AppWindow {
+    window: MainWindow,
+}
+
+impl AppWindow {
+    pub fn new() -> Result<Self, slint::PlatformError> {
+        let window = MainWindow::new()?;
+        Ok(AppWindow { window })
+    }
+
+    pub fn show(self) -> Result<(), slint::PlatformError> {
+        self.window.show()
     }
 }

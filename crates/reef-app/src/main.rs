@@ -4,7 +4,6 @@
 //! reef-session transport sessions.
 
 mod app;
-mod controller;
 
 use reef_logging::init;
 
@@ -14,6 +13,7 @@ fn main() {
 
     tracing::info!("Starting Reef application");
 
-    // TODO: Launch Slint main window (Phase 4).
-    println!("Reef v0.1.0 - implementation in progress (see PLAN.md)");
+    // Launch Slint main window (blocks until window is closed).
+    let app_window = app::AppWindow::new().expect("failed to create Slint window");
+    app_window.show().expect("failed to show Slint window");
 }
