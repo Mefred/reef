@@ -83,7 +83,9 @@ impl DeviceTransport for SerialTransport {
             Ok(Ok(n)) => {
                 let s = String::from_utf8_lossy(&tmp[..n]).to_string();
                 self.read_buf.extend_from_slice(s.as_bytes());
-                Ok(String::from_utf8_lossy(&self.read_buf).to_string())
+                // Drain the buffer: return what we have and clear it for next read.
+                let available = std::mem::take(&mut self.read_buf);
+                Ok(String::from_utf8_lossy(&available).to_string())
             }
             Ok(Err(e)) => Err(Error::Transport(format!("serial read: {}", e))),
             Err(_) => Ok(String::new()),

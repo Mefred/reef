@@ -12,6 +12,8 @@ pub enum Error {
     PrivilegeEscalationFailed,
     #[error("not connected")]
     NotConnected,
+    #[error("session not found: {0}")]
+    NotFound(String),
     #[error("timeout")]
     Timeout,
     #[error("parse error: {0}")]

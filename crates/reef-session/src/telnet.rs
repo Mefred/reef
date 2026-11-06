@@ -99,7 +99,9 @@ impl DeviceTransport for TelnetTransport {
             Ok(Ok(n)) => {
                 let s = String::from_utf8_lossy(&tmp[..n]).to_string();
                 self.process_telnet_stream(&s);
-                Ok(String::from_utf8_lossy(&self.read_buf).to_string())
+                // Drain the buffer: return what we have and clear it for next read.
+                let available = std::mem::take(&mut self.read_buf);
+                Ok(String::from_utf8_lossy(&available).to_string())
             }
             Ok(Err(e)) => Err(Error::Transport(format!("telnet read: {}", e))),
             Err(_) => Ok(String::new()), // timeout -> nothing available

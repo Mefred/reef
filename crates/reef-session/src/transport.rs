@@ -14,8 +14,9 @@ pub enum TransportType {
 /// Every device transport implements this trait so the session layer is
 /// transport-agnostic.
 ///
-/// Phase 0 stubs do not require Send + Sync; real tokio-based transports will
-/// add those bounds when implemented.
+/// Note: `Send + Sync` is NOT required here because `ssh2::Session` is not
+/// `Send`. Reef runs device I/O on a single thread (the GUI thread), so
+/// `Send` is not needed.
 pub trait DeviceTransport {
     async fn connect(&mut self) -> Result<(), super::Error>;
     async fn disconnect(&mut self) -> Result<(), super::Error>;

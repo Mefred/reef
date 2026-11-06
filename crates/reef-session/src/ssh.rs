@@ -208,8 +208,18 @@ impl SshTransport {
 
 /// Verify the SSH host key against known_hosts according to policy.
 fn verify_host_key(sess: &ssh2::Session, config: &ConnectionConfig) -> Result<(), Error> {
-    let key = sess.host_key().map(|(k, _)| k).unwrap_or(&[]);
+    let (key, key_type) = sess.host_key().unwrap_or((&[], ssh2::HostKeyType::Unknown));
     let key_hex = hex::encode(key);
+    let key_type_str = match key_type {
+        ssh2::HostKeyType::Rsa => "ssh-rsa",
+        ssh2::HostKeyType::Dss => "ssh-dss",
+        ssh2::HostKeyType::Ecdsa256 => "ecdsa-sha2-nistp256",
+        ssh2::HostKeyType::Ecdsa384 => "ecdsa-sha2-nistp384",
+        ssh2::HostKeyType::Ecdsa521 => "ecdsa-sha2-nistp521",
+        ssh2::HostKeyType::Ed25519 => "ssh-ed25519",
+        ssh2::HostKeyType::Unknown => "unknown",
+        _ => "unknown",
+    };
 
     let known_hosts_path = ConnectionConfig::known_hosts_path();
     let known = std::fs::read_to_string(&known_hosts_path).unwrap_or_default();
@@ -220,23 +230,32 @@ fn verify_host_key(sess: &ssh2::Session, config: &ConnectionConfig) -> Result<()
     match config.host_key_policy {
         crate::config::HostKeyPolicy::Accept => {
             if !already_known {
-                tracing::warn!(host = %config.host, "ssh: accepting new host key");
-                append_known_host(&known_hosts_path, config.host.as_str(), &key_hex)?;
+                tracing::warn!(
+                    host = %config.host,
+                    key_type = %key_type_str,
+                    "ssh: accepting new host key"
+                );
+                append_known_host(&known_hosts_path, config.host.as_str(), key_type_str, &key_hex)?;
             }
             Ok(())
         }
         crate::config::HostKeyPolicy::Warn => {
             if !already_known {
-                tracing::warn!(host = %config.host, key = %key_hex, "ssh: unknown host key, accepting (warn)");
-                append_known_host(&known_hosts_path, config.host.as_str(), &key_hex)?;
+                tracing::warn!(
+                    host = %config.host,
+                    key_type = %key_type_str,
+                    key = %key_hex,
+                    "ssh: unknown host key, accepting (warn)"
+                );
+                append_known_host(&known_hosts_path, config.host.as_str(), key_type_str, &key_hex)?;
             }
             Ok(())
         }
         crate::config::HostKeyPolicy::Reject => {
             if !already_known {
                 return Err(Error::HostKey(format!(
-                    "unknown host key for {}: {}",
-                    config.host, key_hex
+                    "unknown host key for {} (type {}): {}",
+                    config.host, key_type_str, key_hex
                 )));
             }
             Ok(())
@@ -244,11 +263,16 @@ fn verify_host_key(sess: &ssh2::Session, config: &ConnectionConfig) -> Result<()
     }
 }
 
-fn append_known_host(path: &std::path::Path, host: &str, key_hex: &str) -> Result<(), Error> {
+fn append_known_host(
+    path: &std::path::Path,
+    host: &str,
+    key_type: &str,
+    key_hex: &str,
+) -> Result<(), Error> {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let entry = format!("{} ssh-rsa {}\n", host, key_hex);
+    let entry = format!("{} {} {}\n", host, key_type, key_hex);
     std::fs::OpenOptions::new()
         .create(true)
         .append(true)
