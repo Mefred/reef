@@ -3,31 +3,38 @@ import { Button, GroupBox, ScrollView, TextEdit } from "std-widgets.slint";
 // Reusable sub-components
 component NavItem inherits Rectangle {
     in property <string> text: "";
-    in property <color> bg_color: #ffffff;
-    in property <color> accent_color: transparent;
-    in property <color> text_color: #666666;
+    in property <bool> active: false;
+    callback activated();
 
-    height: 44px;
-    background: bg_color;
+    height: 40px;
+    background: active ? #22332C : #18241F;
+    clip: true;
 
     HorizontalLayout {
-        height: 44px;
+        height: 40px;
         spacing: 12px;
         padding: 0px;
 
         Rectangle {
-            width: 4px;
-            height: 20px;
-            background: accent_color;
+            width: 3px;
+            height: 22px;
+            background: active ? #36D8A2 : transparent;
         }
 
         Text {
             text: text;
             font-size: 13px;
-            color: text_color;
+            color: active ? #36D8A2 : #A9BCB1;
+            vertical-alignment: center;
         }
 
         Rectangle { width: 100%; }
+    }
+
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => { root.activated(); }
     }
 }
 
@@ -41,14 +48,14 @@ component InfoRow inherits HorizontalLayout {
         text: label;
         width: 130px;
         font-size: 13px;
-        color: #6c757d;
+        color: #A9BCB1;
     }
 
     Text {
         text: value;
         width: 100%;
         font-size: 13px;
-        color: #333333;
+        color: #DCE9E2;
     }
 }
 
@@ -57,6 +64,9 @@ export component ConnectionScreen inherits Window {
     title: "Reef - Connect to Device";
     width: 900px;
     height: 700px;
+    min-width: 760px;
+    min-height: 620px;
+    background: #111916;
 
     in property <string> status_text: "";
     in property <bool> connecting: false;
@@ -73,7 +83,7 @@ export component ConnectionScreen inherits Window {
         padding: 0px;
 
         Rectangle {
-            background: #007bff;
+            background: #18241F;
             height: 80px;
             width: 100%;
 
@@ -84,19 +94,19 @@ export component ConnectionScreen inherits Window {
                 Text {
                     text: "Reef";
                     font-size: 24px;
-                    color: #ffffff;
+                    color: #36D8A2;
                     font-weight: 700;
                 }
 
                 Text {
                     text: "Cisco IOS XE Configuration Manager";
                     font-size: 14px;
-                    color: #e0e0e0;
+                    color: #A9BCB1;
                 }
             }
         }
 
-        Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+        Rectangle { background: #2B3B33; height: 1px; width: 100%; }
 
         HorizontalLayout {
             spacing: 0px;
@@ -122,12 +132,12 @@ export component ConnectionScreen inherits Window {
                         Text {
                             text: "Select or create a device profile to connect to.";
                             font-size: 12px;
-                            color: #6c757d;
+                            color: #A9BCB1;
                         }
                     }
                 }
 
-                Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+                Rectangle { background: #2B3B33; height: 1px; width: 100%; }
 
                 GroupBox {
                     title: "Connection Method";
@@ -143,58 +153,68 @@ export component ConnectionScreen inherits Window {
 
                         HorizontalLayout {
                             spacing: 12px;
-                            Text { text: "Host/IP:"; width: 70px; }
+                            Text {
+            color: #DCE9E2; text: "Host/IP:"; width: 70px; }
                             TextEdit { text: ""; width: 100%; }
                         }
 
                         HorizontalLayout {
                             spacing: 12px;
-                            Text { text: "Port:"; width: 70px; }
+                            Text {
+            color: #DCE9E2; text: "Port:"; width: 70px; }
                             TextEdit { text: "22"; width: 80px; }
-                            Text { text: "(22 SSH, 23 Telnet)"; font-size: 11px; color: #6c757d; }
+                            Text {
+            color: #DCE9E2; text: "(22 SSH, 23 Telnet)"; font-size: 11px; color: #A9BCB1; }
                         }
 
                         HorizontalLayout {
                             spacing: 12px;
-                            Text { text: "Username:"; width: 70px; }
+                            Text {
+            color: #DCE9E2; text: "Username:"; width: 70px; }
                             TextEdit { text: "admin"; width: 100%; }
                         }
 
                         HorizontalLayout {
                             spacing: 12px;
-                            Text { text: "Password:"; width: 70px; }
+                            Text {
+            color: #DCE9E2; text: "Password:"; width: 70px; }
                             TextEdit { text: ""; width: 100%; }
                         }
 
                         HorizontalLayout {
                             spacing: 12px;
-                            Text { text: "Enable:"; width: 70px; }
+                            Text {
+            color: #DCE9E2; text: "Enable:"; width: 70px; }
                             TextEdit { text: ""; width: 100%; }
                         }
 
-                        Rectangle { height: 1px; width: 100%; background: #dee2e6; }
+                        Rectangle { height: 1px; width: 100%; background: #2B3B33; }
 
                         HorizontalLayout {
                             spacing: 12px;
-                            Text { text: "Serial Port:"; width: 70px; }
+                            Text {
+            color: #DCE9E2; text: "Serial Port:"; width: 70px; }
                             TextEdit { text: ""; width: 100%; }
                         }
 
                         HorizontalLayout {
                             spacing: 12px;
-                            Text { text: "Baud Rate:"; width: 70px; }
+                            Text {
+            color: #DCE9E2; text: "Baud Rate:"; width: 70px; }
                             TextEdit { text: "9600"; width: 100px; }
                         }
 
                         HorizontalLayout {
                             spacing: 12px;
-                            Text { text: ""; width: 70px; }
-                            Text { text: "Serial console uses physical serial port."; font-size: 11px; color: #6c757d; width: 100%; }
+                            Text {
+            color: #DCE9E2; text: ""; width: 70px; }
+                            Text {
+            color: #DCE9E2; text: "Serial console uses physical serial port."; font-size: 11px; color: #A9BCB1; width: 100%; }
                         }
                     }
                 }
 
-                Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+                Rectangle { background: #2B3B33; height: 1px; width: 100%; }
 
                 VerticalLayout {
                     spacing: 12px;
@@ -202,7 +222,7 @@ export component ConnectionScreen inherits Window {
                     Text {
                         text: status_text;
                         font-size: 13px;
-                        color: #dc3545;
+                        color: #E36D79;
                     }
 
                     Button {
@@ -218,12 +238,12 @@ export component ConnectionScreen inherits Window {
                     Text {
                         text: connecting ? "Connecting..." : "Ready to connect";
                         font-size: 11px;
-                        color: #6c757d;
+                        color: #A9BCB1;
                     }
                 }
             }
 
-            Rectangle { background: #dee2e6; width: 1px; }
+            Rectangle { background: #2B3B33; width: 1px; }
 
             VerticalLayout {
                 width: 100%;
@@ -231,6 +251,7 @@ export component ConnectionScreen inherits Window {
                 padding: 32px;
 
                 Text {
+            color: #DCE9E2;
                     text: "Saved Profiles";
                     font-size: 18px;
                     font-weight: 700;
@@ -245,7 +266,7 @@ export component ConnectionScreen inherits Window {
             }
         }
 
-        Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+        Rectangle { background: #2B3B33; height: 1px; width: 100%; }
 
         HorizontalLayout {
             height: 40px;
@@ -254,7 +275,7 @@ export component ConnectionScreen inherits Window {
             Text {
                 text: "Reef - Cisco IOS XE Configuration Manager";
                 font-size: 11px;
-                color: #6c757d;
+                color: #A9BCB1;
             }
 
             Rectangle { width: 100%; }
@@ -262,7 +283,7 @@ export component ConnectionScreen inherits Window {
             Text {
                 text: "Not connected";
                 font-size: 11px;
-                color: #6c757d;
+                color: #A9BCB1;
             }
         }
     }
@@ -271,8 +292,11 @@ export component ConnectionScreen inherits Window {
 // Main Device Window
 export component MainWindow inherits Window {
     title: "Reef - Cisco IOS XE Configuration Manager";
-    width: 1400px;
-    height: 900px;
+    width: 1280px;
+    height: 820px;
+    min-width: 980px;
+    min-height: 640px;
+    background: #111916;
 
     in property <string> connection_status: "disconnected";
     in property <string> device_hostname: "-";
@@ -317,7 +341,7 @@ export component MainWindow inherits Window {
     in property <string> disruptive_warning: "";
     in property <bool> has_pending_changes: false;
     in property <string> pending_text: "No pending changes";
-    in property <color> pending_color: #6c757d;
+    in property <color> pending_color: #A9BCB1;
 
     // Tab visibility
     in property <bool> show_overview: true;
@@ -393,7 +417,7 @@ export component MainWindow inherits Window {
                 Text {
                     text: "Reef";
                     font-size: 20px;
-                    color: #007bff;
+                    color: #36D8A2;
                     font-weight: 700;
                 }
 
@@ -401,7 +425,7 @@ export component MainWindow inherits Window {
                     text: device_hostname;
                     font-size: 14px;
                     font-weight: 700;
-                    color: #333333;
+                    color: #DCE9E2;
                 }
             }
 
@@ -413,7 +437,7 @@ export component MainWindow inherits Window {
                 Text {
                     text: connection_status;
                     font-size: 12px;
-                    color: #dc3545;
+                    color: #E36D79;
                     font-weight: 700;
                 }
 
@@ -433,24 +457,30 @@ export component MainWindow inherits Window {
             }
         }
 
-        Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+        Rectangle { background: #2B3B33; height: 1px; width: 100%; }
 
         Rectangle {
-            background: #f8f9fa;
+            background: #18241F;
             height: 48px;
 
             HorizontalLayout {
                 spacing: 16px;
                 padding: 12px;
 
-                Text { text: "Model:"; width: 50px; color: #6c757d; }
-                Text { text: device_model; width: 100%; color: #333333; }
+                Text {
+            color: #DCE9E2; text: "Model:"; width: 50px; color: #A9BCB1; }
+                Text {
+            color: #DCE9E2; text: device_model; width: 100%; color: #DCE9E2; }
 
-                Text { text: "Version:"; width: 60px; color: #6c757d; }
-                Text { text: device_version; width: 100%; color: #333333; }
+                Text {
+            color: #DCE9E2; text: "Version:"; width: 60px; color: #A9BCB1; }
+                Text {
+            color: #DCE9E2; text: device_version; width: 100%; color: #DCE9E2; }
 
-                Text { text: "Uptime:"; width: 60px; color: #6c757d; }
-                Text { text: device_uptime; width: 100%; color: #333333; }
+                Text {
+            color: #DCE9E2; text: "Uptime:"; width: 60px; color: #A9BCB1; }
+                Text {
+            color: #DCE9E2; text: device_uptime; width: 100%; color: #DCE9E2; }
 
                 Rectangle { width: 100%; }
 
@@ -463,15 +493,15 @@ export component MainWindow inherits Window {
             }
         }
 
-        Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+        Rectangle { background: #2B3B33; height: 1px; width: 100%; }
 
         HorizontalLayout {
             height: 100%;
             spacing: 0px;
 
             Rectangle {
-                background: #ffffff;
-                width: 240px;
+                background: #18241F;
+                width: 224px;
 
                 VerticalLayout {
                     spacing: 0px;
@@ -483,7 +513,7 @@ export component MainWindow inherits Window {
                         Text {
                             text: "Configuration";
                             font-size: 12px;
-                            color: #6c757d;
+                            color: #A9BCB1;
                             font-weight: 700;
                         }
                     }
@@ -491,26 +521,25 @@ export component MainWindow inherits Window {
                     VerticalLayout {
                         spacing: 2px;
 
-                        NavItem { text: "Overview"; bg_color: #f0f0f0; accent_color: #007bff; text_color: #007bff; }
-                        NavItem { text: "Interfaces"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "VLANs"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "Routing"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "ACLs"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "DHCP"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "NAT"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "SSH / Access"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "System"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "Configuration"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "Changes"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "Backups / History"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
-                        NavItem { text: "Terminal"; bg_color: #ffffff; accent_color: transparent; text_color: #666666; }
+                        NavItem { text: "Overview"; active: show_overview; activated => { set_active_tab("overview"); } }
+                        NavItem { text: "Interfaces"; active: show_interfaces; activated => { set_active_tab("interfaces"); } }
+                        NavItem { text: "VLANs"; active: show_vlans; activated => { set_active_tab("vlans"); } }
+                        NavItem { text: "Routing"; active: show_routing; activated => { set_active_tab("routing"); } }
+                        NavItem { text: "ACLs"; active: show_acls; activated => { set_active_tab("acls"); } }
+                        NavItem { text: "DHCP"; active: show_dhcp; activated => { set_active_tab("dhcp"); } }
+                        NavItem { text: "NAT"; active: show_nat; activated => { set_active_tab("nat"); } }
+                        NavItem { text: "SSH / Access"; active: show_ssh; activated => { set_active_tab("ssh"); } }
+                        NavItem { text: "System"; active: show_system; activated => { set_active_tab("system"); } }
+                        NavItem { text: "Changes"; active: show_changes; activated => { set_active_tab("changes"); } }
+                        NavItem { text: "Backups / History"; active: show_backups; activated => { set_active_tab("backups"); } }
+                        NavItem { text: "Terminal"; active: show_terminal; activated => { set_active_tab("terminal"); } }
                     }
 
                     Rectangle { width: 100%; height: 100%; }
                 }
             }
 
-            Rectangle { background: #dee2e6; width: 1px; }
+            Rectangle { background: #2B3B33; width: 1px; }
 
             VerticalLayout {
                 width: 100%;
@@ -525,7 +554,7 @@ export component MainWindow inherits Window {
                         text: "Overview";
                         font-size: 18px;
                         font-weight: 700;
-                        color: #333333;
+                        color: #DCE9E2;
                     }
 
                     Rectangle { width: 100%; }
@@ -545,7 +574,7 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+                Rectangle { background: #2B3B33; height: 1px; width: 100%; }
 
                 ScrollView {
                     height: 100%;
@@ -577,18 +606,20 @@ export component MainWindow inherits Window {
                                 HorizontalLayout {
                                     spacing: 8px;
 
-                                    Text { text: "Interface:"; width: 100px; }
+                                    Text {
+            color: #DCE9E2; text: "Interface:"; width: 100px; }
 
                                     Rectangle {
                                         width: 100%;
                                         height: 1px;
-                                        background: #dee2e6;
+                                        background: #2B3B33;
                                     }
                                 }
 
                                 HorizontalLayout {
                                     spacing: 16px;
-                                    Text { text: "Description:"; width: 120px; }
+                                    Text {
+            color: #DCE9E2; text: "Description:"; width: 120px; }
                                     TextEdit {
                                         text: edit_description;
                                         width: 300px;
@@ -598,20 +629,24 @@ export component MainWindow inherits Window {
 
                                 HorizontalLayout {
                                     spacing: 16px;
-                                    Text { text: "Admin State:"; width: 120px; }
+                                    Text {
+            color: #DCE9E2; text: "Admin State:"; width: 120px; }
                                     Button { text: "Toggle Enabled"; clicked => { enabled_changed(!edit_enabled); } }
-                                    Text { text: "Enabled"; color: #6c757d; }
+                                    Text {
+            color: #DCE9E2; text: "Enabled"; color: #A9BCB1; }
                                 }
 
                                 HorizontalLayout {
                                     spacing: 16px;
-                                    Text { text: "IPv4 Address:"; width: 120px; }
+                                    Text {
+            color: #DCE9E2; text: "IPv4 Address:"; width: 120px; }
                                     TextEdit {
                                         text: edit_ip;
                                         width: 140px;
                                         edited => { ip_changed(self.text); }
                                     }
-                                    Text { text: "Subnet Mask:"; width: 90px; }
+                                    Text {
+            color: #DCE9E2; text: "Subnet Mask:"; width: 90px; }
                                     TextEdit {
                                         text: edit_mask;
                                         width: 140px;
@@ -628,12 +663,12 @@ export component MainWindow inherits Window {
                                     Rectangle { width: 100%; height: 1px; }
                                 }
 
-                                Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+                                Rectangle { background: #2B3B33; height: 1px; width: 100%; }
 
                                 Text {
                                     text: "Select an interface from the list to edit.";
                                     font-size: 13px;
-                                    color: #6c757d;
+                                    color: #A9BCB1;
                                 }
                             }
                         }
@@ -648,7 +683,7 @@ export component MainWindow inherits Window {
                                 Text {
                                     text: "VLAN configuration editor coming soon.";
                                     font-size: 13px;
-                                    color: #6c757d;
+                                    color: #A9BCB1;
                                 }
                             }
                         }
@@ -663,7 +698,7 @@ export component MainWindow inherits Window {
                                 Text {
                                     text: "Routing configuration editor coming soon.";
                                     font-size: 13px;
-                                    color: #6c757d;
+                                    color: #A9BCB1;
                                 }
                             }
                         }
@@ -678,7 +713,7 @@ export component MainWindow inherits Window {
                                 Text {
                                     text: "ACL configuration editor coming soon.";
                                     font-size: 13px;
-                                    color: #6c757d;
+                                    color: #A9BCB1;
                                 }
                             }
                         }
@@ -693,7 +728,7 @@ export component MainWindow inherits Window {
                                 Text {
                                     text: "DHCP configuration editor coming soon.";
                                     font-size: 13px;
-                                    color: #6c757d;
+                                    color: #A9BCB1;
                                 }
                             }
                         }
@@ -708,7 +743,7 @@ export component MainWindow inherits Window {
                                 Text {
                                     text: "NAT configuration editor coming soon.";
                                     font-size: 13px;
-                                    color: #6c757d;
+                                    color: #A9BCB1;
                                 }
                             }
                         }
@@ -723,7 +758,7 @@ export component MainWindow inherits Window {
                                 Text {
                                     text: "SSH configuration editor coming soon.";
                                     font-size: 13px;
-                                    color: #6c757d;
+                                    color: #A9BCB1;
                                 }
                             }
                         }
@@ -738,7 +773,7 @@ export component MainWindow inherits Window {
                                 Text {
                                     text: "System configuration editor coming soon.";
                                     font-size: 13px;
-                                    color: #6c757d;
+                                    color: #A9BCB1;
                                 }
                             }
                         }
@@ -754,12 +789,12 @@ export component MainWindow inherits Window {
                                     read-only: true;
                                 }
 
-                                Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+                                Rectangle { background: #2B3B33; height: 1px; width: 100%; }
 
                                 Text {
                                     text: disruptive_warning;
                                     font-size: 12px;
-                                    color: #dc3545;
+                                    color: #E36D79;
                                 }
                             }
                         }
@@ -768,7 +803,7 @@ export component MainWindow inherits Window {
             }
         }
 
-        Rectangle { background: #dee2e6; height: 1px; width: 100%; }
+        Rectangle { background: #2B3B33; height: 1px; width: 100%; }
 
         HorizontalLayout {
             height: 56px;
