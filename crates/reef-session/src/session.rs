@@ -453,6 +453,109 @@ fn extract_hostname(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::{DeviceTransport, TransportType};
+    use std::time::Duration;
+
+    struct TestTransport {
+        connected: bool,
+        initial_output: String,
+        disconnect_fails: bool,
+        disconnect_calls: usize,
+    }
+
+    impl TestTransport {
+        fn new(initial_output: &str) -> Self {
+            Self {
+                connected: false,
+                initial_output: initial_output.to_string(),
+                disconnect_fails: false,
+                disconnect_calls: 0,
+            }
+        }
+    }
+
+    impl DeviceTransport for TestTransport {
+        async fn connect(&mut self) -> Result<(), Error> {
+            self.connected = true;
+            Ok(())
+        }
+
+        async fn disconnect(&mut self) -> Result<(), Error> {
+            self.disconnect_calls += 1;
+            if self.disconnect_fails {
+                return Err(Error::Transport("simulated close failure".to_string()));
+            }
+            self.connected = false;
+            Ok(())
+        }
+
+        async fn send(&mut self, _data: &str) -> Result<(), Error> {
+            Ok(())
+        }
+
+        async fn send_raw(&mut self, _bytes: &[u8]) -> Result<(), Error> {
+            Ok(())
+        }
+
+        async fn read_until(
+            &mut self,
+            _pattern: &str,
+            _timeout: Duration,
+        ) -> Result<String, Error> {
+            Ok(String::new())
+        }
+
+        async fn read_available(&mut self, _timeout: Duration) -> Result<String, Error> {
+            Ok(std::mem::take(&mut self.initial_output))
+        }
+
+        fn is_connected(&self) -> bool {
+            self.connected
+        }
+
+        fn transport_type(&self) -> TransportType {
+            TransportType::Telnet
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_login_closes_transport_and_resets_session_state() {
+        let transport = TestTransport::new("Username:");
+        let mut session = Session::new(transport, ConnectionConfig::default());
+
+        let result = session.connect(&ConnectionConfig::default()).await;
+
+        assert!(matches!(result, Err(Error::AuthFailed)));
+        assert!(!session.is_connected());
+        assert!(!session.is_authenticated());
+        assert!(!session.is_privileged());
+        assert_eq!(session.transport.disconnect_calls, 1);
+        assert!(matches!(session.current_mode, PromptMode::Unknown(_)));
+        assert!(session.hostname.is_none());
+    }
+
+    #[tokio::test]
+    async fn disconnect_resets_authentication_even_when_transport_close_fails() {
+        let mut transport = TestTransport::new("");
+        transport.connected = true;
+        transport.disconnect_fails = true;
+        let mut session = Session::new(transport, ConnectionConfig::default());
+        session.authenticated = true;
+        session.privileged = true;
+        session.paging_disabled = true;
+        session.current_mode = PromptMode::PrivilegedExec;
+        session.hostname = Some("router".to_string());
+
+        let result = session.disconnect().await;
+
+        assert!(matches!(result, Err(Error::Transport(_))));
+        assert!(!session.is_authenticated());
+        assert!(!session.is_privileged());
+        assert!(!session.paging_disabled);
+        assert!(matches!(session.current_mode, PromptMode::Unknown(_)));
+        assert!(session.hostname.is_none());
+        assert_eq!(session.transport.disconnect_calls, 1);
+    }
 
     #[test]
     fn extract_hostname_works() {
