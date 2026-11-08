@@ -151,7 +151,7 @@
     if (deviceId && ["Interfaces", "VLANs", "Routing"].includes(activeSection)) {
       void refreshWorkspace(deviceId);
     }
-    if (deviceId && activeSection === "Configuration") {
+    if (deviceId && ["Configuration", "Access Lists", "DHCP"].includes(activeSection)) {
       void refreshConfiguration(deviceId);
     }
   });
@@ -163,6 +163,8 @@
     { label: "VLANs", icon: "◇" },
     { label: "Routing", icon: "⇄" },
     { label: "Configuration", icon: "⌘" },
+    { label: "Access Lists", icon: "▦" },
+    { label: "DHCP", icon: "⇥" },
     { label: "Terminal", icon: ">_" },
   ];
 
@@ -793,6 +795,64 @@
             </div>
           {/if}
           <p class="security-note">This is a read-only snapshot. Reef does not apply configuration changes from this screen yet. Secret-bearing lines are not returned to the frontend.</p>
+        {/if}
+      {:else if activeSection === "Access Lists" || activeSection === "DHCP"}
+        <div class="workspace-toolbar">
+          <div>
+            <h2>{activeSection === "Access Lists" ? "Access control lists" : "DHCP pools"}</h2>
+            <p>Structured configuration parsed from the active device's running configuration.</p>
+          </div>
+          {#if connectedProfile}
+            <button class="secondary-button" onclick={() => void refreshConfiguration(connectedProfile!.id)} disabled={configurationLoading}>
+              {configurationLoading ? "Refreshing…" : "Refresh configuration"}
+            </button>
+          {/if}
+        </div>
+        {#if !connectedProfile}
+          <div class="empty-panel">
+            <div class="welcome-icon">⌁</div>
+            <h2>Connect a device first</h2>
+            <p>{activeSection} data is available after establishing a device session.</p>
+            <button class="primary-button" onclick={() => (activeSection = "Connections")}>Open connections</button>
+          </div>
+        {:else if configurationError}
+          <div class="profile-state error-state"><strong>Unable to retrieve configuration</strong><span>{configurationError}</span></div>
+        {:else if configurationLoading && !configuration}
+          <div class="profile-state">Retrieving and parsing running configuration…</div>
+        {:else if configuration}
+          {#if activeSection === "Access Lists"}
+            <div class="data-panel config-section">
+              <div class="data-panel-heading">
+                <div><h2>Access control lists</h2><p>{configuration.acls.length} ACLs · {configuration.acls.reduce((total, acl) => total + acl.rules.length, 0)} parsed rules</p></div>
+                <span class="coming-soon">RUNNING CONFIGURATION</span>
+              </div>
+              {#each configuration.acls as acl (acl.name)}
+                <div class="config-list-row"><strong>{acl.name}</strong><span>{acl.aclType} · {acl.rules.length} rules</span></div>
+                {#each acl.rules as rule, index (index)}
+                  <div class="config-feature-list"><span class="mono">{rule}</span></div>
+                {/each}
+              {:else}
+                <p class="config-empty">No access lists were recognized in the running configuration.</p>
+              {/each}
+            </div>
+          {:else}
+            <div class="data-panel config-section">
+              <div class="data-panel-heading">
+                <div><h2>DHCP pools</h2><p>{configuration.dhcpPools.length} configured pools</p></div>
+                <span class="coming-soon">RUNNING CONFIGURATION</span>
+              </div>
+              {#each configuration.dhcpPools as pool (pool.name)}
+                <div class="config-list-row"><strong>{pool.name}</strong><span class="mono">{pool.network}</span></div>
+                <div class="config-feature-list">
+                  <span>Default router: {pool.defaultRouter || "Not configured"}</span>
+                  <span>DNS: {pool.dnsServers.join(", ") || "Not configured"}</span>
+                </div>
+              {:else}
+                <p class="config-empty">No DHCP pools were recognized in the running configuration.</p>
+              {/each}
+            </div>
+          {/if}
+          <p class="security-note">Read-only inspection. Configuration changes for these features are not enabled yet.</p>
         {/if}
       {:else}
         <div class="empty-panel">
