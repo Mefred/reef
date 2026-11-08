@@ -768,6 +768,12 @@ async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
             }
         }
     }
+
+    // The actor owns every transport. Close them before its runtime and thread
+    // are dropped; report individual failures without skipping other sessions.
+    for (device_id, error) in manager.disconnect_all().await {
+        tracing::warn!(%device_id, %error, "failed to disconnect device during session actor shutdown");
+    }
 }
 
 #[cfg(test)]
