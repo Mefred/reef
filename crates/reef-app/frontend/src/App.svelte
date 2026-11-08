@@ -31,6 +31,18 @@
     routeError: string | null;
   }
 
+  interface ConfigurationSnapshot {
+    hostname: string | null;
+    domainName: string | null;
+    nameServers: string[];
+    interfaces: Array<{ name: string; description: string | null; enabled: boolean; mode: string; ipv4: string | null; mtu: number | null }>;
+    vlans: Array<{ id: number; name: string; enabled: boolean }>;
+    staticRoutes: string[];
+    aclNames: string[];
+    dhcpPoolNames: string[];
+    warnings: string[];
+  }
+
   interface DeviceProfile {
     id: string;
     name: string;
@@ -66,6 +78,21 @@
   let workspace = $state<DeviceWorkspace | null>(null);
   let workspaceLoading = $state(false);
   let workspaceRefreshError = $state<string | null>(null);
+  let configuration = $state<ConfigurationSnapshot | null>(null);
+  let configurationLoading = $state(false);
+  let configurationError = $state<string | null>(null);
+
+  async function refreshConfiguration(deviceId: string) {
+    configurationLoading = true;
+    configurationError = null;
+    try {
+      configuration = await invoke<ConfigurationSnapshot>("get_device_configuration", { deviceId });
+    } catch (error) {
+      configurationError = String(error);
+    } finally {
+      configurationLoading = false;
+    }
+  }
 
   async function refreshWorkspace(deviceId: string) {
     workspaceLoading = true;
@@ -83,6 +110,9 @@
     const deviceId = connectedProfile?.id;
     if (deviceId && ["Interfaces", "VLANs", "Routing"].includes(activeSection)) {
       void refreshWorkspace(deviceId);
+    }
+    if (deviceId && activeSection === "Configuration") {
+      void refreshConfiguration(deviceId);
     }
   });
 
@@ -170,6 +200,8 @@
       connectedProfile = profile;
       workspace = null;
       workspaceRefreshError = null;
+      configuration = null;
+      configurationError = null;
       selectedProfile = null;
       password = "";
       activeSection = "Overview";
@@ -600,6 +632,68 @@
               <div class="profile-state">No static routes were recognized. Connected and dynamic routes are not shown in this initial view.</div>
             {/if}
           </div>
+        {/if}
+      {:else if activeSection === "Configuration"}
+        <div class="workspace-toolbar">
+          <div><h2>Running configuration</h2><p>Read-only structured snapshot parsed from the connected device. Secrets are excluded from this view.</p></div>
+          {#if connectedProfile}
+            <button class="secondary-button" onclick={() => void refreshConfiguration(connectedProfile!.id)} disabled={configurationLoading}>
+              {configurationLoading ? "Refreshing…" : "Refresh configuration"}
+            </button>
+          {/if}
+        </div>
+        {#if !connectedProfile}
+          <div class="empty-panel"><div class="welcome-icon">⌁</div><h2>Connect a device first</h2><p>Running configuration is retrieved from an active device session.</p><button class="primary-button" onclick={() => (activeSection = "Connections")}>Open connections</button></div>
+        {:else if configurationError}
+          <div class="profile-state error-state"><strong>Unable to retrieve configuration</strong><span>{configurationError}</span></div>
+        {:else if configurationLoading && !configuration}
+          <div class="profile-state">Retrieving and parsing running configuration…</div>
+        {:else if configuration}
+          <div class="config-summary-grid">
+            <article class="config-summary-card"><span>HOSTNAME</span><strong>{configuration.hostname || "Not configured"}</strong></article>
+            <article class="config-summary-card"><span>DOMAIN NAME</span><strong>{configuration.domainName || "Not configured"}</strong></article>
+            <article class="config-summary-card"><span>INTERFACES</span><strong>{configuration.interfaces.length}</strong></article>
+            <article class="config-summary-card"><span>VLANS</span><strong>{configuration.vlans.length}</strong></article>
+          </div>
+          <div class="data-panel config-section">
+            <div class="data-panel-heading"><div><h2>Configured interfaces</h2><p>Configuration state, not live link state</p></div></div>
+            {#if configuration.interfaces.length}
+              <div class="table-scroll"><table class="device-table"><thead><tr><th>Interface</th><th>Description</th><th>Mode</th><th>IPv4</th><th>Admin state</th></tr></thead>
+                <tbody>{#each configuration.interfaces as iface (iface.name)}
+                  <tr><td class="mono">{iface.name}</td><td>{iface.description || "—"}</td><td>{iface.mode}</td><td class="mono">{iface.ipv4 || "—"}</td><td><span class:state-up={iface.enabled} class="state-pill">{iface.enabled ? "enabled" : "shutdown"}</span></td></tr>
+                {/each}</tbody>
+              </table></div>
+            {:else}<p class="config-empty">No interface configuration was parsed.</p>{/if}
+          </div>
+          <div class="config-columns">
+            <div class="data-panel config-section">
+              <div class="data-panel-heading"><div><h2>VLAN configuration</h2><p>{configuration.vlans.length} configured VLANs</p></div></div>
+              {#each configuration.vlans as vlan (vlan.id)}
+                <div class="config-list-row"><strong>{vlan.id}</strong><span>{vlan.name || "Unnamed"}</span><span>{vlan.enabled ? "Enabled" : "Shutdown"}</span></div>
+              {:else}<p class="config-empty">No VLAN configuration parsed.</p>{/each}
+            </div>
+            <div class="data-panel config-section">
+              <div class="data-panel-heading"><div><h2>Static routes</h2><p>{configuration.staticRoutes.length} configured routes</p></div></div>
+              {#each configuration.staticRoutes as route, index (index)}
+                <div class="config-list-row"><span class="mono">{route}</span></div>
+              {:else}<p class="config-empty">No static routes configured.</p>{/each}
+            </div>
+          </div>
+          <div class="data-panel config-section">
+            <div class="data-panel-heading"><div><h2>Other configuration</h2><p>Recognized feature blocks</p></div></div>
+            <div class="config-feature-list">
+              <span>{configuration.aclNames.length} ACLs: {configuration.aclNames.join(", ") || "None"}</span>
+              <span>{configuration.dhcpPoolNames.length} DHCP pools: {configuration.dhcpPoolNames.join(", ") || "None"}</span>
+              <span>Name servers: {configuration.nameServers.join(", ") || "None"}</span>
+            </div>
+          </div>
+          {#if configuration.warnings.length}
+            <div class="data-panel config-section">
+              <div class="data-panel-heading"><div><h2>Parser warnings</h2><p>{configuration.warnings.length} lines were not fully understood; raw configuration remains on the device</p></div></div>
+              <div class="config-warnings">{#each configuration.warnings as warning, index (index)}<p>{warning}</p>{/each}</div>
+            </div>
+          {/if}
+          <p class="security-note">This is a read-only snapshot. Reef does not apply configuration changes from this screen yet. Secret-bearing lines are not returned to the frontend.</p>
         {/if}
       {:else}
         <div class="empty-panel">
