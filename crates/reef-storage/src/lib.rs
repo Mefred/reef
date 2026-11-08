@@ -4,7 +4,7 @@
 //! history survive restarts and are independent of any device session.
 
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -76,6 +76,44 @@ pub enum Error {
     Serialization(String),
 }
 
+/// Persist a complete JSON document through a sibling temporary file so a
+/// process interruption cannot leave an existing record half-written.
+fn write_json_atomic(path: &Path, json: &[u8]) -> Result<(), Error> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| Error::Io("invalid storage file name".to_string()))?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| Error::Io(error.to_string()))?
+        .as_nanos();
+    let temporary_path = path.with_file_name(format!(
+        ".{file_name}.{}.{}.tmp",
+        std::process::id(),
+        nonce
+    ));
+
+    let write_result = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)
+            .map_err(|error| Error::Io(error.to_string()))?;
+        file.write_all(json)
+            .map_err(|error| Error::Io(error.to_string()))?;
+        file.sync_all()
+            .map_err(|error| Error::Io(error.to_string()))?;
+        fs::rename(&temporary_path, path).map_err(|error| Error::Io(error.to_string()))?;
+        Ok(())
+    })();
+
+    if write_result.is_err() {
+        let _ = fs::remove_file(&temporary_path);
+    }
+
+    write_result
+}
+
 fn data_dir() -> Result<PathBuf, Error> {
     ProjectDirs::from("", "", "reef")
         .map(|p| p.data_dir().to_path_buf())
@@ -119,10 +157,7 @@ impl Storage {
         let path = self.profile_path(&profile.id)?;
         let json = serde_json::to_string_pretty(profile)
             .map_err(|e| Error::Serialization(e.to_string()))?;
-        let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| Error::Io(e.to_string()))?;
-        Ok(())
+        write_json_atomic(&path, json.as_bytes())
     }
 
     /// Delete a saved device connection profile.
@@ -162,10 +197,7 @@ impl Storage {
         let path = self.record_path("backups", &backup.id)?;
         let json = serde_json::to_string_pretty(backup)
             .map_err(|e| Error::Serialization(e.to_string()))?;
-        let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| Error::Io(e.to_string()))?;
-        Ok(())
+        write_json_atomic(&path, json.as_bytes())
     }
 
     /// List all backups for a device, newest first.
@@ -202,10 +234,7 @@ impl Storage {
         let path = self.record_path("history", &record.id)?;
         let json = serde_json::to_string_pretty(record)
             .map_err(|e| Error::Serialization(e.to_string()))?;
-        let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| Error::Io(e.to_string()))?;
-        Ok(())
+        write_json_atomic(&path, json.as_bytes())
     }
 
     /// List change history for a device, newest first.
