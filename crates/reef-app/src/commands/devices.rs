@@ -90,7 +90,26 @@ pub async fn send_device_command(
     command: String,
 ) -> Result<String, String> {
     validate_device_command(&command)?;
-    actor.send_command(device_id, command).await
+    let output = actor.send_command(device_id, command).await?;
+    Ok(bound_command_output(output))
+}
+
+/// Bound data returned to the webview so a single command cannot flood the
+/// frontend bridge or terminal scrollback with an arbitrarily large response.
+fn bound_command_output(mut output: String) -> String {
+    const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
+    const TRUNCATION_NOTICE: &str = "\\r\\n[output truncated at 1 MiB]\\r\\n";
+
+    if output.len() > MAX_OUTPUT_BYTES {
+        let mut end = MAX_OUTPUT_BYTES;
+        while !output.is_char_boundary(end) {
+            end -= 1;
+        }
+        output.truncate(end);
+        output.push_str(TRUNCATION_NOTICE);
+    }
+
+    output
 }
 
 /// Keep one frontend invocation to one bounded CLI command. The terminal
@@ -195,6 +214,16 @@ mod tests {
         assert!(validate_device_command("show\u{0000}version").is_err());
         assert!(validate_device_command(&"x".repeat(4097)).is_err());
         assert!(validate_device_command(&"x".repeat(4096)).is_ok());
+    }
+
+    #[test]
+    fn terminal_output_is_bounded_without_splitting_utf8() {
+        let output = format!("{}é", "x".repeat(1024 * 1024));
+        let bounded = bound_command_output(output);
+        assert!(bounded.len() < 1024 * 1024 + 64);
+        assert!(bounded.ends_with("\\r\\n[output truncated at 1 MiB]\\r\\n"));
+        assert!(bounded.is_char_boundary(bounded.len()));
+        assert!(!bound_command_output("short output".to_string()).contains("truncated"));
     }
 }
 
