@@ -70,7 +70,7 @@ The Tauri frontend currently provides:
 - A bounded xterm.js request/response terminal.
 - A read-only configuration preview for hostname, domain name, additive DNS servers, and add-only VLAN creation.
 
-The old Slint interface editor is the one notable implemented UI workflow that is not yet represented as an editable workflow in the Tauri UI; the current Tauri Interfaces view is inspection-only. Decide explicitly whether to restore that narrow workflow before calling the migration complete. Do not substitute a broader configuration editor or unsafe apply implementation.
+The old Slint interface editor is the one notable implemented UI workflow not carried into the Tauri frontend. This migration intentionally does not port its desired-state editing and device-apply workflow: doing so would expand a framework replacement into configuration-management work, which is outside the agreed scope. The Tauri Interfaces view provides live inspection, and the limited configuration preview remains review-only. Track interface editing and safe apply/verification as a separate follow-up rather than treating it as a blocker for replacing Slint.
 
 ## Migration acceptance criteria
 
