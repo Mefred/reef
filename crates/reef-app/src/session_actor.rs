@@ -45,6 +45,9 @@ pub struct ConfigurationSnapshot {
     pub static_routes: Vec<String>,
     pub acls: Vec<ConfiguredAcl>,
     pub dhcp_pools: Vec<ConfiguredDhcpPool>,
+    pub nat: Option<ConfiguredNat>,
+    pub ssh: Option<ConfiguredSsh>,
+    pub line_access: Vec<ConfiguredLineAccess>,
     pub warnings: Vec<String>,
 }
 
@@ -74,6 +77,50 @@ pub struct ConfiguredDhcpPool {
     pub network: String,
     pub default_router: Option<String>,
     pub dns_servers: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfiguredNat {
+    pub inside_interfaces: Vec<String>,
+    pub outside_interfaces: Vec<String>,
+    pub pools: Vec<ConfiguredNatPool>,
+    pub rules: Vec<ConfiguredNatRule>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfiguredNatPool {
+    pub name: String,
+    pub start: String,
+    pub end: String,
+    pub netmask: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfiguredNatRule {
+    pub name: String,
+    pub source_acl: Option<String>,
+    pub pool: Option<String>,
+    pub overload: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfiguredSsh {
+    pub enabled: bool,
+    pub version: String,
+    pub timeout: Option<u16>,
+    pub authentication_retries: Option<u16>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfiguredLineAccess {
+    pub line: String,
+    pub login_required: bool,
+    pub transport: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -305,6 +352,13 @@ fn sort_configuration_snapshot(snapshot: &mut ConfigurationSnapshot) {
     snapshot
         .dhcp_pools
         .sort_by(|left, right| left.name.cmp(&right.name));
+    snapshot.line_access.sort_by(|left, right| left.line.cmp(&right.line));
+    if let Some(nat) = snapshot.nat.as_mut() {
+        nat.inside_interfaces.sort();
+        nat.outside_interfaces.sort();
+        nat.pools.sort_by(|left, right| left.name.cmp(&right.name));
+        nat.rules.sort_by(|left, right| left.name.cmp(&right.name));
+    }
 }
 
 fn validate_hostname(value: &str) -> Result<String, String> {
@@ -535,6 +589,37 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                                         .collect(),
                                 })
                                 .collect(),
+                            nat: config.nat.map(|nat| ConfiguredNat {
+                                inside_interfaces: nat.inside_interfaces,
+                                outside_interfaces: nat.outside_interfaces,
+                                pools: nat.pools.into_iter().map(|pool| ConfiguredNatPool {
+                                    name: pool.name,
+                                    start: pool.start.to_string(),
+                                    end: pool.end.to_string(),
+                                    netmask: pool.netmask.to_string(),
+                                }).collect(),
+                                rules: nat.rules.into_iter().map(|rule| ConfiguredNatRule {
+                                    name: rule.name,
+                                    source_acl: rule.source_acl,
+                                    pool: rule.pool,
+                                    overload: rule.overload,
+                                }).collect(),
+                            }),
+                            ssh: config.ssh.map(|ssh| ConfiguredSsh {
+                                enabled: ssh.enabled,
+                                version: format!("{:?}", ssh.version),
+                                timeout: ssh.timeout,
+                                authentication_retries: ssh.authentication_retries,
+                            }),
+                            line_access: config.line_configs.into_values().map(|line| {
+                                ConfiguredLineAccess {
+                                    line: line.line,
+                                    login_required: line.login,
+                                    transport: line.transport.into_iter().map(|transport| {
+                                        format!("{:?}", transport)
+                                    }).collect(),
+                                }
+                            }).collect(),
                             warnings: parsed
                                 .warnings
                                 .into_iter()
