@@ -170,3 +170,19 @@ h1 { margin-bottom: 7px; font-size: clamp(28px, 4vw, 36px); }
 .state-pill.state-up { border-color: #315d49; color: #79dfae; background: #1a3025; }
 .section-error { margin: 0; padding: 18px 22px; color: #f08b91; font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 620px) { .workspace-toolbar { align-items: flex-start; flex-direction: column; }.data-panel-heading { align-items: flex-start; flex-direction: column; }.device-table th, .device-table td { padding-inline: 12px; } }
+
+
+.config-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.config-summary-card { display: flex; min-width: 0; flex-direction: column; gap: 9px; padding: 17px 19px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.config-summary-card span { color: #81958a; font-size: 9px; font-weight: 700; letter-spacing: .8px; }
+.config-summary-card strong { overflow: hidden; color: #e2eee7; font-size: 17px; text-overflow: ellipsis; }
+.config-section { margin-bottom: 15px; }
+.config-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+.config-list-row { display: flex; min-width: 0; align-items: center; gap: 13px; padding: 12px 17px; border-top: 1px solid #26362d; color: #dce7e0; font-size: 11px; }
+.config-list-row > :last-child { margin-left: auto; color: var(--muted); }
+.config-list-row .mono { overflow-wrap: anywhere; }
+.config-feature-list { display: flex; flex-direction: column; gap: 10px; padding: 17px 20px; color: #c6d5cb; font-size: 11px; overflow-wrap: anywhere; }
+.config-empty { padding: 14px 18px; color: var(--muted); font-size: 11px; }
+.config-warnings { max-height: 260px; overflow: auto; padding: 10px 18px; }
+.config-warnings p { margin: 7px 0; color: #d9b77c; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; overflow-wrap: anywhere; }
+@media (max-width: 850px) { .config-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.config-columns { grid-template-columns: 1fr; } }
