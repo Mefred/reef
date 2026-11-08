@@ -435,7 +435,7 @@ fn validate_vlan_draft(id: u16, name: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
+async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
     let mut manager = SessionManager::new();
 
     while let Some(command) = receiver.recv().await {
