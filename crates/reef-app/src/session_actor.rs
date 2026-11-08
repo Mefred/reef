@@ -6,13 +6,30 @@
 
 use std::thread;
 
-use reef_engine::model::DeviceIdentity;
+use reef_engine::model::{DeviceIdentity, InterfaceRef, StaticRoute, VlanConfig};
+use reef_engine::parser::{parse_interfaces, parse_routes, parse_vlans};
+use serde::Serialize;
 use reef_session::{
     ConnectionConfig, SerialTransport, SessionManager, SshTransport, TelnetTransport, TransportType,
 };
 use tokio::runtime::Builder;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::LocalSet;
+
+
+/// Parsed operational data for the device workspace. Individual command
+/// failures are reported independently so unsupported commands do not hide
+/// data returned by the other commands.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceWorkspace {
+    pub interfaces: Vec<InterfaceRef>,
+    pub interface_error: Option<String>,
+    pub vlans: Vec<VlanConfig>,
+    pub vlan_error: Option<String>,
+    pub static_routes: Vec<StaticRoute>,
+    pub route_error: Option<String>,
+}
 
 enum Command {
     Connect {
@@ -41,6 +58,10 @@ enum Command {
         device_id: String,
         secret: String,
         reply: oneshot::Sender<Result<(), String>>,
+    },
+    Inspect {
+        device_id: String,
+        reply: oneshot::Sender<Result<DeviceWorkspace, String>>,
     },
 }
 
@@ -129,6 +150,17 @@ impl SessionActor {
             .map_err(|_| "session actor stopped before replying".to_string())?
     }
 
+
+    pub async fn inspect(&self, device_id: String) -> Result<DeviceWorkspace, String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::Inspect { device_id, reply })
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
     pub async fn enable(&self, device_id: String, secret: String) -> Result<(), String> {
         let (reply, response) = oneshot::channel();
         self.sender
@@ -209,6 +241,33 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                     .await
                     .map_err(|error| error.to_string());
                 let _ = reply.send(result);
+            }
+            Command::Inspect { device_id, reply } => {
+                let interfaces = manager.send_command(&device_id, "show ip interface brief").await;
+                let vlans = manager.send_command(&device_id, "show vlan brief").await;
+                let routes = manager.send_command(&device_id, "show ip route").await;
+
+                let (interfaces, interface_error) = match interfaces {
+                    Ok(output) => (parse_interfaces(&output).model, None),
+                    Err(error) => (Vec::new(), Some(error.to_string())),
+                };
+                let (vlans, vlan_error) = match vlans {
+                    Ok(output) => (parse_vlans(&output).model, None),
+                    Err(error) => (Vec::new(), Some(error.to_string())),
+                };
+                let (static_routes, route_error) = match routes {
+                    Ok(output) => (parse_routes(&output).model, None),
+                    Err(error) => (Vec::new(), Some(error.to_string())),
+                };
+
+                let _ = reply.send(Ok(DeviceWorkspace {
+                    interfaces,
+                    interface_error,
+                    vlans,
+                    vlan_error,
+                    static_routes,
+                    route_error,
+                }));
             }
             Command::Enable {
                 device_id,
