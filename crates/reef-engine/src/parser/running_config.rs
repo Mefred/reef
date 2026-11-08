@@ -8,8 +8,8 @@
 use super::{ParseResult, ParseWarning};
 use crate::model::{
     AclConfig, AclRule, AclType, Action, AddressSpec, DeviceConfig, DhcpPool, InterfaceConfig,
-    InterfaceMode, NatConfig, NatPool, NatRule, PortSpec, Protocol, Secret, SshConfig,
-    SshVersion, StaticRoute, VlanConfig,
+    InterfaceMode, NatConfig, NatPool, NatRule, PortSpec, Protocol, Secret, SshConfig, SshVersion,
+    StaticRoute, VlanConfig,
 };
 use std::net::IpAddr;
 
@@ -203,11 +203,20 @@ fn parse_top_level(
                 parts[4].parse::<std::net::Ipv4Addr>(),
             ) {
                 let nat = config.nat.get_or_insert_with(NatConfig::default);
-                nat.pools.push(NatPool { name: parts[0].to_string(), start, end, netmask });
+                nat.pools.push(NatPool {
+                    name: parts[0].to_string(),
+                    start,
+                    end,
+                    netmask,
+                });
                 return ConfigBlock::None;
             }
         }
-        warnings.push(ParseWarning::new(0, trimmed.to_string(), "unparsed NAT pool".to_string()));
+        warnings.push(ParseWarning::new(
+            0,
+            trimmed.to_string(),
+            "unparsed NAT pool".to_string(),
+        ));
         return ConfigBlock::None;
     }
     if let Some(rest) = trimmed.strip_prefix("ip nat inside source list ") {
@@ -222,11 +231,19 @@ fn parse_top_level(
             });
             return ConfigBlock::None;
         }
-        warnings.push(ParseWarning::new(0, trimmed.to_string(), "unsupported NAT source rule".to_string()));
+        warnings.push(ParseWarning::new(
+            0,
+            trimmed.to_string(),
+            "unsupported NAT source rule".to_string(),
+        ));
         return ConfigBlock::None;
     }
     if trimmed.starts_with("ip nat ") || trimmed.starts_with("no ip nat ") {
-        warnings.push(ParseWarning::new(0, trimmed.to_string(), "unsupported NAT command".to_string()));
+        warnings.push(ParseWarning::new(
+            0,
+            trimmed.to_string(),
+            "unsupported NAT command".to_string(),
+        ));
         return ConfigBlock::None;
     }
     if let Some(rest) = trimmed.strip_prefix("ip ssh ") {
@@ -243,7 +260,11 @@ fn parse_top_level(
             ["version", "1.99"] => ssh.version = SshVersion::Both,
             ["time-out", value] => ssh.timeout = value.parse().ok(),
             ["authentication-retries", value] => ssh.authentication_retries = value.parse().ok(),
-            _ => warnings.push(ParseWarning::new(0, trimmed.to_string(), "unsupported SSH setting".to_string())),
+            _ => warnings.push(ParseWarning::new(
+                0,
+                trimmed.to_string(),
+                "unsupported SSH setting".to_string(),
+            )),
         }
         return ConfigBlock::None;
     }
