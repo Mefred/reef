@@ -89,10 +89,24 @@ pub async fn send_device_command(
     device_id: String,
     command: String,
 ) -> Result<String, String> {
+    validate_device_command(&command)?;
+    actor.send_command(device_id, command).await
+}
+
+/// Keep one frontend invocation to one bounded CLI command. The terminal
+/// enforces the same limit for normal input, but the Tauri boundary must also
+/// reject oversized or multi-line payloads from any caller.
+fn validate_device_command(command: &str) -> Result<(), String> {
     if command.trim().is_empty() {
         return Err("command cannot be empty".to_string());
     }
-    actor.send_command(device_id, command).await
+    if command.len() > 4096 {
+        return Err("command exceeds the 4096-byte limit".to_string());
+    }
+    if command.chars().any(char::is_control) {
+        return Err("command cannot contain control characters or line breaks".to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -171,6 +185,16 @@ mod tests {
     #[test]
     fn serial_connection_requires_a_port_path() {
         assert!(request(TransportType::Serial, "").into_config().is_err());
+    }
+
+    #[test]
+    fn device_command_must_be_a_single_bounded_line() {
+        assert!(validate_device_command("show version").is_ok());
+        assert!(validate_device_command("   ").is_err());
+        assert!(validate_device_command("show version\\nreload").is_err());
+        assert!(validate_device_command("show\\u{0000}version").is_err());
+        assert!(validate_device_command(&"x".repeat(4097)).is_err());
+        assert!(validate_device_command(&"x".repeat(4096)).is_ok());
     }
 }
 
