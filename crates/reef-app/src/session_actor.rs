@@ -280,6 +280,46 @@ impl SessionActor {
     }
 }
 
+fn validate_hostname(value: &str) -> Result<String, String> {
+    let hostname = value.trim();
+    if hostname.is_empty()
+        || hostname.len() > 63
+        || !hostname
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(
+            "hostname must be 1-63 ASCII letters, digits, hyphens, or underscores".to_string(),
+        );
+    }
+    Ok(hostname.to_string())
+}
+
+fn validate_domain_name(value: &str) -> Result<String, String> {
+    let domain = value.trim();
+    let valid = !domain.is_empty()
+        && domain.len() <= 253
+        && domain.split('.').all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && label.as_bytes()[0].is_ascii_alphanumeric()
+                && label.as_bytes()[label.len() - 1].is_ascii_alphanumeric()
+                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        });
+    if !valid {
+        return Err("domain name must contain valid DNS labels".to_string());
+    }
+    Ok(domain.to_string())
+}
+
+fn normalize_name_server(value: &str) -> Result<String, String> {
+    value
+        .trim()
+        .parse::<std::net::IpAddr>()
+        .map(|address| address.to_string())
+        .map_err(|_| format!("invalid name-server IP address: {value}"))
+}
+
 async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
     let mut manager = SessionManager::new();
 
@@ -471,32 +511,13 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                     let mut desired = current.clone();
 
                     if let Some(hostname) = draft.hostname {
-                        let hostname = hostname.trim();
-                        if hostname.is_empty() || hostname.len() > 63
-                            || !hostname.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-                        {
-                            return Err("hostname must be 1-63 ASCII letters, digits, hyphens, or underscores".to_string());
-                        }
-                        desired.hostname = Some(hostname.to_string());
+                        desired.hostname = Some(validate_hostname(&hostname)?);
                     }
                     if let Some(domain) = draft.domain_name {
-                        let domain = domain.trim();
-                        let valid = !domain.is_empty() && domain.len() <= 253
-                            && domain.split('.').all(|label| {
-                                !label.is_empty() && label.len() <= 63
-                                    && label.as_bytes()[0].is_ascii_alphanumeric()
-                                    && label.as_bytes()[label.len() - 1].is_ascii_alphanumeric()
-                                    && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-                            });
-                        if !valid {
-                            return Err("domain name must contain valid DNS labels".to_string());
-                        }
-                        desired.ip_domain_name = Some(domain.to_string());
+                        desired.ip_domain_name = Some(validate_domain_name(&domain)?);
                     }
                     for server in draft.add_name_servers {
-                        let parsed = server.trim().parse::<std::net::IpAddr>()
-                            .map_err(|_| format!("invalid name-server IP address: {server}"))?;
-                        let normalized = parsed.to_string();
+                        let normalized = normalize_name_server(&server)?;
                         if !desired.ip_name_server.contains(&normalized) {
                             desired.ip_name_server.push(normalized);
                         }
@@ -548,5 +569,35 @@ mod tests {
     #[test]
     fn managed_actor_handle_is_send_and_sync() {
         assert_send_sync::<SessionActor>();
+    }
+
+    #[test]
+    fn validates_hostname_boundaries_and_characters() {
+        assert_eq!(super::validate_hostname(" Router-01 ").unwrap(), "Router-01");
+        assert!(super::validate_hostname("").is_err());
+        assert!(super::validate_hostname(&"a".repeat(64)).is_err());
+        assert!(super::validate_hostname("router.example").is_err());
+    }
+
+    #[test]
+    fn validates_dns_domain_labels() {
+        assert_eq!(
+            super::validate_domain_name(" lab.example.net ").unwrap(),
+            "lab.example.net"
+        );
+        assert!(super::validate_domain_name("").is_err());
+        assert!(super::validate_domain_name("-invalid.example").is_err());
+        assert!(super::validate_domain_name("invalid..example").is_err());
+        assert!(super::validate_domain_name("invalid_label.example").is_err());
+    }
+
+    #[test]
+    fn normalizes_ipv4_and_ipv6_name_servers() {
+        assert_eq!(super::normalize_name_server(" 1.1.1.1 ").unwrap(), "1.1.1.1");
+        assert_eq!(
+            super::normalize_name_server("2001:4860:4860::8888").unwrap(),
+            "2001:4860:4860::8888"
+        );
+        assert!(super::normalize_name_server("dns.example.net").is_err());
     }
 }
