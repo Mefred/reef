@@ -4,7 +4,7 @@
 //! history survive restarts and are independent of any device session.
 
 use serde::{Deserialize, Serialize};
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -76,6 +76,41 @@ pub enum Error {
     Serialization(String),
 }
 
+/// Persist a complete JSON document through a sibling temporary file so a
+/// process interruption cannot leave an existing record half-written.
+fn write_json_atomic(path: &Path, json: &[u8]) -> Result<(), Error> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| Error::Io("invalid storage file name".to_string()))?;
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| Error::Io(error.to_string()))?
+        .as_nanos();
+    let temporary_path =
+        path.with_file_name(format!(".{file_name}.{}.{}.tmp", std::process::id(), nonce));
+
+    let write_result = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)
+            .map_err(|error| Error::Io(error.to_string()))?;
+        file.write_all(json)
+            .map_err(|error| Error::Io(error.to_string()))?;
+        file.sync_all()
+            .map_err(|error| Error::Io(error.to_string()))?;
+        fs::rename(&temporary_path, path).map_err(|error| Error::Io(error.to_string()))?;
+        Ok(())
+    })();
+
+    if write_result.is_err() {
+        let _ = fs::remove_file(&temporary_path);
+    }
+
+    write_result
+}
+
 fn data_dir() -> Result<PathBuf, Error> {
     ProjectDirs::from("", "", "reef")
         .map(|p| p.data_dir().to_path_buf())
@@ -98,18 +133,40 @@ impl Storage {
         Ok(Storage { data_dir: dir })
     }
 
+    fn record_path(&self, directory: &str, id: &str) -> Result<PathBuf, Error> {
+        if id.is_empty()
+            || !id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(Error::Io("invalid storage record id".to_string()));
+        }
+
+        Ok(self.data_dir.join(directory).join(format!("{id}.json")))
+    }
+
+    fn profile_path(&self, profile_id: &str) -> Result<PathBuf, Error> {
+        self.record_path("profiles", profile_id)
+    }
+
     /// Save a device connection profile.
     pub fn save_profile(&self, profile: &DeviceProfile) -> Result<(), Error> {
-        let path = self
-            .data_dir
-            .join("profiles")
-            .join(format!("{}.json", profile.id));
+        let path = self.profile_path(&profile.id)?;
         let json = serde_json::to_string_pretty(profile)
             .map_err(|e| Error::Serialization(e.to_string()))?;
-        let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| Error::Io(e.to_string()))?;
-        Ok(())
+        write_json_atomic(&path, json.as_bytes())
+    }
+
+    /// Delete a saved device connection profile.
+    pub fn delete_profile(&self, profile_id: &str) -> Result<(), Error> {
+        let path = self.profile_path(profile_id)?;
+        fs::remove_file(&path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                Error::NotFound(profile_id.to_string())
+            } else {
+                Error::Io(error.to_string())
+            }
+        })
     }
 
     /// List all saved device profiles.
@@ -134,16 +191,10 @@ impl Storage {
 
     /// Save a configuration backup.
     pub fn save_backup(&self, backup: &ConfigBackup) -> Result<(), Error> {
-        let path = self
-            .data_dir
-            .join("backups")
-            .join(format!("{}.json", backup.id));
+        let path = self.record_path("backups", &backup.id)?;
         let json = serde_json::to_string_pretty(backup)
             .map_err(|e| Error::Serialization(e.to_string()))?;
-        let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| Error::Io(e.to_string()))?;
-        Ok(())
+        write_json_atomic(&path, json.as_bytes())
     }
 
     /// List all backups for a device, newest first.
@@ -170,26 +221,17 @@ impl Storage {
 
     /// Get a backup by ID.
     pub fn get_backup(&self, backup_id: &str) -> Result<ConfigBackup, Error> {
-        let path = self
-            .data_dir
-            .join("backups")
-            .join(format!("{}.json", backup_id));
+        let path = self.record_path("backups", backup_id)?;
         let data = fs::read_to_string(&path).map_err(|_| Error::NotFound(backup_id.to_string()))?;
         serde_json::from_str(&data).map_err(|e| Error::Serialization(e.to_string()))
     }
 
     /// Record a change in the history.
     pub fn record_change(&self, record: &ChangeRecord) -> Result<(), Error> {
-        let path = self
-            .data_dir
-            .join("history")
-            .join(format!("{}.json", record.id));
+        let path = self.record_path("history", &record.id)?;
         let json = serde_json::to_string_pretty(record)
             .map_err(|e| Error::Serialization(e.to_string()))?;
-        let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| Error::Io(e.to_string()))?;
-        Ok(())
+        write_json_atomic(&path, json.as_bytes())
     }
 
     /// List change history for a device, newest first.
@@ -241,6 +283,36 @@ mod tests {
     }
 
     #[test]
+    fn json_records_are_replaced_atomically() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "reef-storage-atomic-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).expect("create test directory");
+        let path = directory.join("record.json");
+
+        write_json_atomic(&path, br#"{ "value": 1 }"#).expect("write initial record");
+        write_json_atomic(&path, br#"{ "value": 2 }"#).expect("replace record");
+
+        assert_eq!(
+            fs::read_to_string(&path).expect("read record"),
+            r#"{ "value": 2 }"#
+        );
+        let leftovers = fs::read_dir(&directory)
+            .expect("read test directory")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .count();
+        assert_eq!(leftovers, 0);
+
+        fs::remove_dir_all(directory).expect("remove test directory");
+    }
+
+    #[test]
     fn storage_open_creates_dirs() {
         let s = Storage::open().expect("storage should open");
         assert!(s.data_dir.join("backups").is_dir());
@@ -263,6 +335,21 @@ mod tests {
         let profiles = s.list_profiles().expect("list profiles");
         assert_eq!(profiles.len(), 1);
         assert_eq!(profiles[0].host, "10.0.0.1");
+    }
+
+    #[test]
+    fn profile_id_rejects_path_traversal() {
+        let storage = Storage::open().expect("storage should open");
+        assert!(storage.profile_path("../outside").is_err());
+        assert!(storage.profile_path("").is_err());
+    }
+
+    #[test]
+    fn backup_and_history_ids_reject_path_traversal() {
+        let storage = Storage::open().expect("storage should open");
+        assert!(storage.record_path("backups", "../outside").is_err());
+        assert!(storage.record_path("history", "../../outside").is_err());
+        assert!(storage.record_path("backups", "").is_err());
     }
 
     #[test]

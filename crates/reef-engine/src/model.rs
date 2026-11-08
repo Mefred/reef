@@ -193,7 +193,7 @@ pub struct DhcpPool {
 }
 
 /// NAT configuration.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NatConfig {
     pub inside_interfaces: Vec<String>,
     pub outside_interfaces: Vec<String>,

@@ -262,6 +262,23 @@ impl SessionManager {
         guard.save_config().await
     }
 
+    /// Disconnect every registered session during application shutdown.
+    ///
+    /// Returns failures individually so one broken transport does not prevent
+    /// the remaining sessions from receiving a disconnect attempt.
+    pub async fn disconnect_all(&self) -> Vec<(String, Error)> {
+        let device_ids = self.sessions.keys().cloned().collect::<Vec<_>>();
+        let mut failures = Vec::new();
+
+        for device_id in device_ids {
+            if let Err(error) = self.disconnect(&device_id).await {
+                failures.push((device_id, error));
+            }
+        }
+
+        failures
+    }
+
     /// Check if a device session is connected.
     pub async fn is_connected(&self, device_id: &str) -> Result<bool, Error> {
         let session = self
@@ -282,10 +299,106 @@ impl Default for SessionManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transport::DeviceTransport;
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use std::time::Duration;
+
+    struct TestTransport {
+        connected: bool,
+        fail_disconnect: bool,
+        disconnect_calls: Rc<Cell<usize>>,
+    }
+
+    impl DeviceTransport for TestTransport {
+        async fn connect(&mut self) -> Result<(), Error> {
+            self.connected = true;
+            Ok(())
+        }
+
+        async fn disconnect(&mut self) -> Result<(), Error> {
+            self.disconnect_calls.set(self.disconnect_calls.get() + 1);
+            if self.fail_disconnect {
+                return Err(Error::Transport("simulated disconnect failure".to_string()));
+            }
+            self.connected = false;
+            Ok(())
+        }
+
+        async fn send(&mut self, _data: &str) -> Result<(), Error> {
+            Ok(())
+        }
+
+        async fn send_raw(&mut self, _bytes: &[u8]) -> Result<(), Error> {
+            Ok(())
+        }
+
+        async fn read_until(
+            &mut self,
+            _pattern: &str,
+            _timeout: Duration,
+        ) -> Result<String, Error> {
+            Ok(String::new())
+        }
+
+        async fn read_available(&mut self, _timeout: Duration) -> Result<String, Error> {
+            Ok(String::new())
+        }
+
+        fn is_connected(&self) -> bool {
+            self.connected
+        }
+
+        fn transport_type(&self) -> crate::transport::TransportType {
+            crate::transport::TransportType::Telnet
+        }
+    }
 
     #[test]
     fn manager_starts_empty() {
         let m = SessionManager::new();
         assert_eq!(m.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn disconnect_all_attempts_every_transport_after_a_failure() {
+        let first_disconnects = Rc::new(Cell::new(0));
+        let second_disconnects = Rc::new(Cell::new(0));
+        let mut manager = SessionManager::new();
+
+        manager.register(
+            "first",
+            TestTransport {
+                connected: false,
+                fail_disconnect: true,
+                disconnect_calls: Rc::clone(&first_disconnects),
+            },
+        );
+        manager.register(
+            "second",
+            TestTransport {
+                connected: false,
+                fail_disconnect: false,
+                disconnect_calls: Rc::clone(&second_disconnects),
+            },
+        );
+
+        manager
+            .connect("first", ConnectionConfig::default())
+            .await
+            .expect("first transport should connect");
+        manager
+            .connect("second", ConnectionConfig::default())
+            .await
+            .expect("second transport should connect");
+
+        let failures = manager.disconnect_all().await;
+
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].0, "first");
+        assert_eq!(first_disconnects.get(), 1);
+        assert_eq!(second_disconnects.get(), 1);
+        assert!(manager.is_connected("first").await.unwrap());
+        assert!(!manager.is_connected("second").await.unwrap());
     }
 }

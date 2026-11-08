@@ -1,6 +1,6 @@
 [package]
 name = "reef-app"
-description = "Reef desktop GUI application (Slint)"
+description = "Reef network device management desktop application"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
@@ -10,13 +10,15 @@ reef-engine = { path = "../reef-engine" }
 reef-session = { path = "../reef-session" }
 reef-storage = { path = "../reef-storage" }
 reef-logging = { path = "../reef-logging" }
-tracing = "0.1"
-slint = "1.8"
+tauri = { version = "2" }
 tokio = { version = "1", features = ["full"] }
-ipnet = "2.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tracing = "0.1"
 
 [build-dependencies]
-slint-build = "1.8"
+tauri-build = { version = "2" }
 
 [[bin]]
 name = "reef"
