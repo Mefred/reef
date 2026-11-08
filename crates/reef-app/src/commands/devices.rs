@@ -5,7 +5,7 @@ use reef_session::{ConnectionConfig, HostKeyPolicy, TransportType};
 use serde::Deserialize;
 use tauri::State;
 
-use crate::session_actor::SessionActor;
+use crate::session_actor::{ConfigurationDraft, ConfigurationPreview, SessionActor};
 
 /// Frontend-safe connection input. Credentials are intentionally transient
 /// and are never copied into the saved profile model.
@@ -172,4 +172,13 @@ mod tests {
     fn serial_connection_requires_a_port_path() {
         assert!(request(TransportType::Serial, "").into_config().is_err());
     }
+}
+
+#[tauri::command]
+pub async fn preview_device_configuration(
+    actor: State<'_, SessionActor>,
+    device_id: String,
+    draft: ConfigurationDraft,
+) -> Result<ConfigurationPreview, String> {
+    actor.preview_configuration(device_id, draft).await
 }
