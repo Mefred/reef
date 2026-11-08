@@ -43,6 +43,14 @@
     warnings: string[];
   }
 
+  interface ConfigurationPreview {
+    diff: string;
+    commands: string[];
+    warnings: string[];
+    errors: string[];
+    affectsConnectivity: boolean;
+  }
+
   interface DeviceProfile {
     id: string;
     name: string;
@@ -81,6 +89,33 @@
   let configuration = $state<ConfigurationSnapshot | null>(null);
   let configurationLoading = $state(false);
   let configurationError = $state<string | null>(null);
+  let draftHostname = $state("");
+  let draftDomainName = $state("");
+  let draftNameServers = $state("");
+  let previewLoading = $state(false);
+  let previewError = $state<string | null>(null);
+  let configurationPreview = $state<ConfigurationPreview | null>(null);
+
+  async function previewConfiguration() {
+    if (!connectedProfile) return;
+    previewLoading = true;
+    previewError = null;
+    configurationPreview = null;
+    try {
+      configurationPreview = await invoke<ConfigurationPreview>("preview_device_configuration", {
+        deviceId: connectedProfile.id,
+        draft: {
+          hostname: draftHostname.trim() || null,
+          domainName: draftDomainName.trim() || null,
+          addNameServers: draftNameServers.split(/[\\s,]+/).map((value) => value.trim()).filter(Boolean),
+        },
+      });
+    } catch (error) {
+      previewError = String(error);
+    } finally {
+      previewLoading = false;
+    }
+  }
 
   async function refreshConfiguration(deviceId: string) {
     configurationLoading = true;
@@ -655,6 +690,29 @@
         {:else if configurationLoading && !configuration}
           <div class="profile-state">Retrieving and parsing running configuration…</div>
         {:else if configuration}
+          <div class="data-panel config-section">
+            <div class="data-panel-heading"><div><h2>System settings preview</h2><p>Set-only preview. Leave fields blank to preserve current values; name servers are added without removing existing entries.</p></div></div>
+            <div class="profile-form-grid">
+              <label>New hostname<input bind:value={draftHostname} placeholder={configuration.hostname || "Router-01"} /></label>
+              <label>Domain name<input bind:value={draftDomainName} placeholder={configuration.domainName || "example.net"} /></label>
+              <label>Name servers<input bind:value={draftNameServers} placeholder="1.1.1.1, 8.8.8.8" /></label>
+            </div>
+            <button class="primary-button" onclick={() => void previewConfiguration()} disabled={previewLoading || (!draftHostname.trim() && !draftDomainName.trim() && !draftNameServers.trim())}>
+              {previewLoading ? "Generating preview…" : "Generate configuration preview"}
+            </button>
+            {#if previewError}<div class="profile-state error-state">{previewError}</div>{/if}
+            {#if configurationPreview}
+              {#if configurationPreview.errors.length}
+                <div class="profile-state error-state"><strong>Preview has validation errors</strong>{#each configurationPreview.errors as issue}<p>{issue}</p>{/each}</div>
+              {/if}
+              {#each configurationPreview.warnings as warning}<div class="profile-state">{warning}</div>{/each}
+              <h3>Proposed diff</h3><pre class="terminal-output">{configurationPreview.diff}</pre>
+              <h3>Generated IOS XE commands</h3>
+              <pre class="terminal-output">{configurationPreview.commands.length ? configurationPreview.commands.join("\n") : "No commands generated."}</pre>
+              {#if configurationPreview.affectsConnectivity}<p class="security-note">This preview may affect management connectivity.</p>{/if}
+              <p class="security-note">Preview only. No commands are sent to the device and startup configuration is not modified.</p>
+            {/if}
+          </div>
           <div class="config-summary-grid">
             <article class="config-summary-card"><span>HOSTNAME</span><strong>{configuration.hostname || "Not configured"}</strong></article>
             <article class="config-summary-card"><span>DOMAIN NAME</span><strong>{configuration.domainName || "Not configured"}</strong></article>
