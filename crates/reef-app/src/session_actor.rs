@@ -43,8 +43,8 @@ pub struct ConfigurationSnapshot {
     pub interfaces: Vec<ConfiguredInterface>,
     pub vlans: Vec<VlanConfig>,
     pub static_routes: Vec<String>,
-    pub acl_names: Vec<String>,
-    pub dhcp_pool_names: Vec<String>,
+    pub acls: Vec<ConfiguredAcl>,
+    pub dhcp_pools: Vec<ConfiguredDhcpPool>,
     pub warnings: Vec<String>,
 }
 
@@ -57,6 +57,23 @@ pub struct ConfiguredInterface {
     pub mode: String,
     pub ipv4: Option<String>,
     pub mtu: Option<u16>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfiguredAcl {
+    pub name: String,
+    pub acl_type: String,
+    pub rules: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfiguredDhcpPool {
+    pub name: String,
+    pub network: String,
+    pub default_router: Option<String>,
+    pub dns_servers: Vec<String>,
 }
 
 enum Command {
@@ -347,8 +364,38 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                                 .iter()
                                 .map(|route| format!("{} via {}", route.prefix, route.next_hop))
                                 .collect(),
-                            acl_names: config.acls.into_keys().collect(),
-                            dhcp_pool_names: config.dhcp_pools.into_keys().collect(),
+                            acls: config
+                                .acls
+                                .into_values()
+                                .map(|acl| ConfiguredAcl {
+                                    name: acl.name,
+                                    acl_type: format!("{:?}", acl.acl_type),
+                                    rules: acl
+                                        .rules
+                                        .into_iter()
+                                        .map(|rule| {
+                                            format!(
+                                                "{:?} {:?} from {:?} to {:?}",
+                                                rule.action, rule.protocol, rule.source, rule.destination
+                                            )
+                                        })
+                                        .collect(),
+                                })
+                                .collect(),
+                            dhcp_pools: config
+                                .dhcp_pools
+                                .into_values()
+                                .map(|pool| ConfiguredDhcpPool {
+                                    name: pool.name,
+                                    network: pool.network.to_string(),
+                                    default_router: pool.default_router.map(|router| router.to_string()),
+                                    dns_servers: pool
+                                        .dns_servers
+                                        .into_iter()
+                                        .map(|server| server.to_string())
+                                        .collect(),
+                                })
+                                .collect(),
                             warnings: parsed
                                 .warnings
                                 .into_iter()
