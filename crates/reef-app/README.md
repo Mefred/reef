@@ -61,7 +61,7 @@ The Tauri frontend currently provides:
 - Live interface, VLAN, and static-route inspection.
 - Sanitized running-configuration inspection, including system settings, ACLs, DHCP, supported NAT syntax, SSH settings, and line access policy.
 - A read-only configuration preview for supported system settings and additive VLAN creation.
-- An initial xterm.js terminal that executes commands and displays complete responses.
+- An xterm.js request/response terminal with sequential command execution, a 32-command pending queue limit, a 4096-byte command limit, and a 1 MiB response limit.
 
 The running-configuration view intentionally excludes passwords and other secret-bearing fields. Parser diagnostics do not expose raw unrecognized configuration lines. Configuration preview only generates a diff and commands for review; it does not apply changes to a device.
 
@@ -72,7 +72,7 @@ This is an active migration, not yet full feature parity or a production-ready c
 - Native OS credential-vault integration (Keychain, Windows Credential Manager, and Linux Secret Service).
 - Complete interface, VLAN, route, ACL, DHCP, NAT, SSH, and system configuration editing and validation.
 - Safe apply orchestration, post-apply verification, rollback, backups, and history.
-- Continuous terminal streaming, bounded output, cancellation, and operation progress.
+- Continuous terminal streaming, command cancellation, and operation progress. The current request/response terminal already bounds pending commands and returned response sizes.
 - Broader IOS syntax coverage, including static, route-map, and VRF-specific NAT.
 - Clean install/upgrade and packaged-app validation on all supported platforms.
 
