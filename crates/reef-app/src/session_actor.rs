@@ -343,9 +343,13 @@ fn validate_vlan_draft(id: u16, name: &str) -> Result<String, String> {
         || name.len() > 32
         || !name
             .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
+            .all(|character| {
+                character.is_ascii_alphanumeric() || character == '_' || character == '-'
+            })
     {
-        return Err("VLAN name must be 1-32 ASCII letters, digits, underscores, or hyphens".to_string());
+        return Err(
+            "VLAN name must be 1-32 ASCII letters, digits, underscores, or hyphens".to_string(),
+        );
     }
 
     Ok(name.to_string())
@@ -558,7 +562,10 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                     for vlan in draft.add_vlans {
                         let name = validate_vlan_draft(vlan.id, &vlan.name)?;
                         if !requested_vlan_ids.insert(vlan.id) {
-                            return Err(format!("VLAN ID {} appears more than once in the draft", vlan.id));
+                            return Err(format!(
+                                "VLAN ID {} appears more than once in the draft",
+                                vlan.id
+                            ));
                         }
                         if desired.vlans.contains_key(&vlan.id) {
                             return Err(format!(

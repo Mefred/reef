@@ -109,7 +109,7 @@
         draft: {
           hostname: draftHostname.trim() || null,
           domainName: draftDomainName.trim() || null,
-          addNameServers: draftNameServers.split(/[\\s,]+/).map((value) => value.trim()).filter(Boolean),
+          addNameServers: draftNameServers.split(/[\s,]+/).map((value) => value.trim()).filter(Boolean),
           addVlans: draftVlanId.trim() && draftVlanName.trim()
             ? [{ id: Number(draftVlanId), name: draftVlanName.trim() }]
             : [],
@@ -702,7 +702,7 @@
           <div class="profile-state">Retrieving and parsing running configuration…</div>
         {:else if configuration}
           <div class="data-panel config-section">
-            <div class="data-panel-heading"><div><h2>System settings preview</h2><p>Set-only preview. Leave fields blank to preserve current values; name servers are added without removing existing entries.</p></div></div>
+            <div class="data-panel-heading"><div><h2>System settings preview</h2><p>Set-only preview. Blank system fields preserve current values; name servers are additive. Fill in both VLAN fields to add a new VLAN.</p></div></div>
             <div class="profile-form-grid">
               <label>New hostname<input bind:value={draftHostname} placeholder={configuration.hostname || "Router-01"} /></label>
               <label>Domain name<input bind:value={draftDomainName} placeholder={configuration.domainName || "example.net"} /></label>
