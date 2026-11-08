@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Keep only the newest validation run for this PR/branch.
+concurrency:
+  group: desktop-migration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     name: Check (${{ matrix.os }})
