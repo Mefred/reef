@@ -85,6 +85,16 @@ pub struct ConfigurationDraft {
     /// Additional name servers; existing servers are preserved.
     #[serde(default)]
     pub add_name_servers: Vec<String>,
+    /// New VLANs only. Existing VLANs cannot be modified or removed by this draft.
+    #[serde(default)]
+    pub add_vlans: Vec<AddVlanDraft>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddVlanDraft {
+    pub id: u16,
+    pub name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -320,6 +330,27 @@ fn normalize_name_server(value: &str) -> Result<String, String> {
         .map_err(|_| format!("invalid name-server IP address: {value}"))
 }
 
+fn validate_vlan_draft(id: u16, name: &str) -> Result<String, String> {
+    let valid_id = (2..=1001).contains(&id) || (1006..=4094).contains(&id);
+    if !valid_id {
+        return Err(format!(
+            "VLAN ID {id} is reserved or outside the supported range (2-1001, 1006-4094)"
+        ));
+    }
+
+    let name = name.trim();
+    if name.is_empty()
+        || name.len() > 32
+        || !name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
+    {
+        return Err("VLAN name must be 1-32 ASCII letters, digits, underscores, or hyphens".to_string());
+    }
+
+    Ok(name.to_string())
+}
+
 async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
     let mut manager = SessionManager::new();
 
@@ -523,6 +554,28 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                         }
                     }
 
+                    let mut requested_vlan_ids = std::collections::HashSet::new();
+                    for vlan in draft.add_vlans {
+                        let name = validate_vlan_draft(vlan.id, &vlan.name)?;
+                        if !requested_vlan_ids.insert(vlan.id) {
+                            return Err(format!("VLAN ID {} appears more than once in the draft", vlan.id));
+                        }
+                        if desired.vlans.contains_key(&vlan.id) {
+                            return Err(format!(
+                                "VLAN {} already exists; this preview only supports adding new VLANs",
+                                vlan.id
+                            ));
+                        }
+                        desired.vlans.insert(
+                            vlan.id,
+                            VlanConfig {
+                                id: vlan.id,
+                                name,
+                                enabled: true,
+                            },
+                        );
+                    }
+
                     let changes = reef_engine::planner::plan(&current, &desired);
                     let problems = reef_engine::validator::validate(&changes, &current);
                     let errors = problems
@@ -603,6 +656,17 @@ mod tests {
         assert!(super::validate_domain_name("-invalid.example").is_err());
         assert!(super::validate_domain_name("invalid..example").is_err());
         assert!(super::validate_domain_name("invalid_label.example").is_err());
+    }
+
+    #[test]
+    fn validates_vlan_id_ranges_and_names() {
+        assert_eq!(super::validate_vlan_draft(10, " USERS-01 ").unwrap(), "USERS-01");
+        assert!(super::validate_vlan_draft(1, "DEFAULT").is_err());
+        assert!(super::validate_vlan_draft(1002, "FDDI").is_err());
+        assert!(super::validate_vlan_draft(4095, "INVALID").is_err());
+        assert!(super::validate_vlan_draft(20, "").is_err());
+        assert!(super::validate_vlan_draft(20, "VLAN NAME").is_err());
+        assert!(super::validate_vlan_draft(20, &"A".repeat(33)).is_err());
     }
 
     #[test]

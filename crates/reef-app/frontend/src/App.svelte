@@ -92,6 +92,8 @@
   let draftHostname = $state("");
   let draftDomainName = $state("");
   let draftNameServers = $state("");
+  let draftVlanId = $state("10");
+  let draftVlanName = $state("");
   let previewLoading = $state(false);
   let previewError = $state<string | null>(null);
   let configurationPreview = $state<ConfigurationPreview | null>(null);
@@ -108,6 +110,9 @@
           hostname: draftHostname.trim() || null,
           domainName: draftDomainName.trim() || null,
           addNameServers: draftNameServers.split(/[\\s,]+/).map((value) => value.trim()).filter(Boolean),
+          addVlans: draftVlanId.trim() && draftVlanName.trim()
+            ? [{ id: Number(draftVlanId), name: draftVlanName.trim() }]
+            : [],
         },
       });
     } catch (error) {
@@ -702,8 +707,11 @@
               <label>New hostname<input bind:value={draftHostname} placeholder={configuration.hostname || "Router-01"} /></label>
               <label>Domain name<input bind:value={draftDomainName} placeholder={configuration.domainName || "example.net"} /></label>
               <label>Name servers<input bind:value={draftNameServers} placeholder="1.1.1.1, 8.8.8.8" /></label>
+              <label>New VLAN ID<input bind:value={draftVlanId} inputmode="numeric" placeholder="10" /></label>
+              <label>New VLAN name<input bind:value={draftVlanName} placeholder="USERS" /></label>
             </div>
-            <button class="primary-button" onclick={() => void previewConfiguration()} disabled={previewLoading || (!draftHostname.trim() && !draftDomainName.trim() && !draftNameServers.trim())}>
+            <p class="security-note">VLAN preview is add-only: existing VLANs cannot be changed or removed. Reserved VLAN IDs are rejected.</p>
+            <button class="primary-button" onclick={() => void previewConfiguration()} disabled={previewLoading || (!draftHostname.trim() && !draftDomainName.trim() && !draftNameServers.trim() && !(draftVlanId.trim() && draftVlanName.trim()))}>
               {previewLoading ? "Generating preview…" : "Generate configuration preview"}
             </button>
             {#if previewError}<div class="profile-state error-state">{previewError}</div>{/if}
