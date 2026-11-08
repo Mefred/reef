@@ -218,9 +218,10 @@ mod tests {
 
     #[test]
     fn terminal_output_is_bounded_without_splitting_utf8() {
-        let output = format!("{}é", "x".repeat(1024 * 1024));
+        let prefix = "x".repeat(1024 * 1024 - 1);
+        let output = format!("{prefix}é");
         let bounded = bound_command_output(output);
-        assert!(bounded.len() < 1024 * 1024 + 64);
+        assert!(bounded.starts_with(&prefix));
         assert!(bounded.ends_with("\r\n[output truncated at 1 MiB]\r\n"));
         assert!(bounded.is_char_boundary(bounded.len()));
         assert!(!bound_command_output("short output".to_string()).contains("truncated"));
