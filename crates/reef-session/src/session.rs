@@ -465,6 +465,7 @@ mod tests {
     struct TestTransport {
         connected: bool,
         initial_output: String,
+        connect_fails: bool,
         disconnect_fails: bool,
         disconnect_calls: usize,
     }
@@ -474,6 +475,7 @@ mod tests {
             Self {
                 connected: false,
                 initial_output: initial_output.to_string(),
+                connect_fails: false,
                 disconnect_fails: false,
                 disconnect_calls: 0,
             }
@@ -483,6 +485,9 @@ mod tests {
     impl DeviceTransport for TestTransport {
         async fn connect(&mut self) -> Result<(), Error> {
             self.connected = true;
+            if self.connect_fails {
+                return Err(Error::Transport("simulated handshake failure".to_string()));
+            }
             Ok(())
         }
 
@@ -522,6 +527,20 @@ mod tests {
         fn transport_type(&self) -> TransportType {
             TransportType::Telnet
         }
+    }
+
+    #[tokio::test]
+    async fn failed_transport_setup_attempts_to_release_partial_resources() {
+        let mut transport = TestTransport::new("");
+        transport.connect_fails = true;
+        let mut session = Session::new(transport, ConnectionConfig::default());
+
+        let result = session.connect(&ConnectionConfig::default()).await;
+
+        assert!(matches!(result, Err(Error::Transport(_))));
+        assert!(!session.is_authenticated());
+        assert!(!session.is_privileged());
+        assert_eq!(session.transport.disconnect_calls, 1);
     }
 
     #[tokio::test]
