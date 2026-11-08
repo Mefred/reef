@@ -352,7 +352,9 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                             warnings: parsed
                                 .warnings
                                 .into_iter()
-                                .map(|warning| format!("line {}: {}", warning.line_no, warning.reason))
+                                .map(|warning| {
+                                    format!("line {}: {}", warning.line_no, warning.reason)
+                                })
                                 .collect(),
                         }
                     });
