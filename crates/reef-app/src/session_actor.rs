@@ -200,13 +200,13 @@ enum Command {
 /// Thread-safe handle to the thread-affine session manager.
 #[derive(Clone)]
 pub struct SessionActor {
-    sender: mpsc::UnboundedSender<Command>,
+    sender: mpsc::Sender<Command>,
 }
 
 impl SessionActor {
     /// Start the dedicated session thread and its local Tokio runtime.
     pub fn start() -> Result<Self, String> {
-        let (sender, receiver) = mpsc::unbounded_channel();
+        let (sender, receiver) = mpsc::channel(64);
 
         thread::Builder::new()
             .name("reef-session-actor".to_string())
@@ -232,6 +232,7 @@ impl SessionActor {
                 config,
                 reply,
             })
+            .await
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
@@ -242,6 +243,7 @@ impl SessionActor {
         let (reply, response) = oneshot::channel();
         self.sender
             .send(Command::Disconnect { device_id, reply })
+            .await
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
@@ -256,6 +258,7 @@ impl SessionActor {
                 command,
                 reply,
             })
+            .await
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
@@ -266,6 +269,7 @@ impl SessionActor {
         let (reply, response) = oneshot::channel();
         self.sender
             .send(Command::IsConnected { device_id, reply })
+            .await
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
@@ -276,6 +280,7 @@ impl SessionActor {
         let (reply, response) = oneshot::channel();
         self.sender
             .send(Command::Identify { device_id, reply })
+            .await
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
@@ -285,6 +290,7 @@ impl SessionActor {
         let (reply, response) = oneshot::channel();
         self.sender
             .send(Command::Inspect { device_id, reply })
+            .await
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
@@ -298,6 +304,7 @@ impl SessionActor {
         let (reply, response) = oneshot::channel();
         self.sender
             .send(Command::GetConfiguration { device_id, reply })
+            .await
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
@@ -316,6 +323,7 @@ impl SessionActor {
                 draft,
                 reply,
             })
+            .await
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
@@ -330,6 +338,7 @@ impl SessionActor {
                 secret,
                 reply,
             })
+            .await
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
