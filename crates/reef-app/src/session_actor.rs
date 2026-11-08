@@ -4,6 +4,7 @@
 //! thread. This actor owns it on a dedicated current-thread Tokio runtime and
 //! exposes only a Send + Sync message handle to Tauri managed state.
 
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use reef_engine::model::{DeviceIdentity, InterfaceRef, StaticRoute, VlanConfig};
@@ -204,6 +205,7 @@ enum Command {
 #[derive(Clone)]
 pub struct SessionActor {
     sender: mpsc::Sender<Command>,
+    join: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
 }
 
 impl SessionActor {
@@ -212,7 +214,7 @@ impl SessionActor {
         let (sender, receiver) = mpsc::channel(64);
         let (startup_sender, startup_receiver) = std::sync::mpsc::sync_channel(1);
 
-        thread::Builder::new()
+        let join = thread::Builder::new()
             .name("reef-session-actor".to_string())
             .spawn(move || {
                 let runtime = match Builder::new_current_thread().enable_all().build() {
@@ -238,7 +240,10 @@ impl SessionActor {
             .recv()
             .map_err(|_| "session actor stopped during startup".to_string())??;
 
-        Ok(Self { sender })
+        Ok(Self {
+            sender,
+            join: Arc::new(Mutex::new(Some(join))),
+        })
     }
 
     pub async fn connect(&self, device_id: String, config: ConnectionConfig) -> Result<(), String> {
@@ -366,13 +371,26 @@ impl SessionActor {
     /// The reply is sent only after cleanup has completed.
     pub async fn shutdown(&self) -> Result<(), String> {
         let (reply, response) = oneshot::channel();
-        self.sender
-            .send(Command::Shutdown { reply })
-            .await
-            .map_err(|_| "session actor is unavailable".to_string())?;
-        response
-            .await
-            .map_err(|_| "session actor stopped before shutdown completed".to_string())?
+        let response_result = match self.sender.send(Command::Shutdown { reply }).await {
+            Ok(()) => response
+                .await
+                .map_err(|_| "session actor stopped before shutdown completed".to_string())?,
+            Err(_) => Err("session actor is unavailable".to_string()),
+        };
+
+        // The shutdown response follows transport cleanup. Join as well so the
+        // actor runtime and thread have fully exited before the app terminates.
+        let join = self
+            .join
+            .lock()
+            .map_err(|_| "session actor join handle was poisoned".to_string())?
+            .take();
+        if let Some(join) = join {
+            join.join()
+                .map_err(|_| "session actor thread panicked".to_string())?;
+        }
+
+        response_result
     }
 }
 
