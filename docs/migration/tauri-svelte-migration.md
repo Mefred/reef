@@ -120,6 +120,7 @@ Implemented in the migration branch:
 - Connect, disconnect, command-send, connection-status, identify, privilege-escalation, and device-workspace inspection actor operations are exposed through typed Tauri commands.
 - Initial live Interfaces, VLANs, and static Routing views query IOS CLI output through the actor and parse it with the existing transport-independent `reef-engine` parsers. Per-command errors are isolated so one unsupported command does not suppress the other sections.
 - A read-only Running Configuration view retrieves `show running-config`, parses it through `parse_running_config`, and returns a deliberately sanitized DTO containing hostname/domain, interfaces, VLANs, static routes, ACL names and parsed rules, DHCP pool networks/routers/DNS servers, and parser warnings. Secret-bearing line passwords and other sensitive configuration fields are not serialized to the frontend. Parser diagnostics expose only line numbers and warning reasons, never the unrecognized raw configuration text.
+- The existing `reef-engine` configuration planner, validator, command generator, diff renderer, and verifier remain available as pure Rust domain logic. The planner now sorts map-backed interface, VLAN, ACL, and DHCP changes so previews and generated command order are deterministic; focused ordering tests cover interfaces and VLANs.
 - The session layer now records authenticated/privileged state from the detected IOS XE prompt, so an already-privileged session can be used without an unnecessary enable exchange.
 - Unknown SSH host keys are rejected by default; the UI requires an explicit trust action before accepting and recording an unknown key.
 - An initial xterm.js terminal sends commands through the actor and displays complete command responses. This is request/response execution, not a continuous interactive byte stream.
@@ -131,7 +132,8 @@ Still pending:
 - Credential vault integration using each platform's native secure storage.
 - Device identification and parsed device inventory/dashboard.
 - ACL, DHCP, NAT, system, and full interface/VLAN/route configuration editing. The current operational and running-configuration views are read-only.
-- Configuration planning, diff, apply, verification, rollback, backups, and history.
+- Integrate the existing configuration planner, validator, diff renderer, generator, and verifier into typed Tauri commands and a reviewable frontend workflow. The planner is currently engine-only and must not be mistaken for a connected/apply-capable UI.
+- Safe apply orchestration, verification, rollback, backups, and history.
 - Interactive terminal streaming, bounded output, cancellation, and operation progress.
 - Green CI on the latest branch head and platform packaging validation. Earlier CI runs exposed an invalid non-RGBA icon; the source icon has since been replaced with a 512×512 RGBA PNG. The latest branch head has a fresh three-platform CI run queued.
 
