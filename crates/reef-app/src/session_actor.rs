@@ -452,7 +452,11 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                     });
                 let _ = reply.send(result);
             }
-            Command::PreviewConfiguration { device_id, draft, reply } => {
+            Command::PreviewConfiguration {
+                device_id,
+                draft,
+                reply,
+            } => {
                 let result = async {
                     let output = manager
                         .send_command(&device_id, "show running-config")
