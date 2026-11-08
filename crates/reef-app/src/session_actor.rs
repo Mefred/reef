@@ -12,7 +12,7 @@ use reef_engine::parser::{parse_interfaces, parse_routes, parse_vlans};
 use reef_session::{
     ConnectionConfig, SerialTransport, SessionManager, SshTransport, TelnetTransport, TransportType,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::runtime::Builder;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::LocalSet;
@@ -76,6 +76,27 @@ pub struct ConfiguredDhcpPool {
     pub dns_servers: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigurationDraft {
+    /// Set-only fields: omitted values preserve the running configuration.
+    pub hostname: Option<String>,
+    pub domain_name: Option<String>,
+    /// Additional name servers; existing servers are preserved.
+    #[serde(default)]
+    pub add_name_servers: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigurationPreview {
+    pub diff: String,
+    pub commands: Vec<String>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    pub affects_connectivity: bool,
+}
+
 enum Command {
     Connect {
         device_id: String,
@@ -111,6 +132,11 @@ enum Command {
     GetConfiguration {
         device_id: String,
         reply: oneshot::Sender<Result<ConfigurationSnapshot, String>>,
+    },
+    PreviewConfiguration {
+        device_id: String,
+        draft: ConfigurationDraft,
+        reply: oneshot::Sender<Result<ConfigurationPreview, String>>,
     },
 }
 
@@ -215,6 +241,20 @@ impl SessionActor {
         let (reply, response) = oneshot::channel();
         self.sender
             .send(Command::GetConfiguration { device_id, reply })
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    pub async fn preview_configuration(
+        &self,
+        device_id: String,
+        draft: ConfigurationDraft,
+    ) -> Result<ConfigurationPreview, String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::PreviewConfiguration { device_id, draft, reply })
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
@@ -410,6 +450,70 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                                 .collect(),
                         }
                     });
+                let _ = reply.send(result);
+            }
+            Command::PreviewConfiguration { device_id, draft, reply } => {
+                let result = async {
+                    let output = manager
+                        .send_command(&device_id, "show running-config")
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    let parsed = parse_running_config(&output);
+                    let current = parsed.model;
+                    let mut desired = current.clone();
+
+                    if let Some(hostname) = draft.hostname {
+                        let hostname = hostname.trim();
+                        if hostname.is_empty() || hostname.len() > 63
+                            || !hostname.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                        {
+                            return Err("hostname must be 1-63 ASCII letters, digits, hyphens, or underscores".to_string());
+                        }
+                        desired.hostname = Some(hostname.to_string());
+                    }
+                    if let Some(domain) = draft.domain_name {
+                        let domain = domain.trim();
+                        let valid = !domain.is_empty() && domain.len() <= 253
+                            && domain.split('.').all(|label| {
+                                !label.is_empty() && label.len() <= 63
+                                    && label.as_bytes()[0].is_ascii_alphanumeric()
+                                    && label.as_bytes()[label.len() - 1].is_ascii_alphanumeric()
+                                    && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                            });
+                        if !valid {
+                            return Err("domain name must contain valid DNS labels".to_string());
+                        }
+                        desired.ip_domain_name = Some(domain.to_string());
+                    }
+                    for server in draft.add_name_servers {
+                        let parsed = server.trim().parse::<std::net::IpAddr>()
+                            .map_err(|_| format!("invalid name-server IP address: {server}"))?;
+                        let normalized = parsed.to_string();
+                        if !desired.ip_name_server.contains(&normalized) {
+                            desired.ip_name_server.push(normalized);
+                        }
+                    }
+
+                    let changes = reef_engine::planner::plan(&current, &desired);
+                    let problems = reef_engine::validator::validate(&changes, &current);
+                    let errors = problems.iter()
+                        .filter(|problem| matches!(problem.severity, reef_engine::validator::Severity::Error))
+                        .map(|problem| format!("{}: {}", problem.element, problem.message))
+                        .collect::<Vec<_>>();
+                    let warnings = problems.iter()
+                        .filter(|problem| matches!(problem.severity, reef_engine::validator::Severity::Warning))
+                        .map(|problem| format!("{}: {}", problem.element, problem.message))
+                        .collect::<Vec<_>>();
+                    let diff = reef_engine::diff::render(&changes);
+                    let batch = reef_engine::generator::generate(&changes);
+                    Ok(ConfigurationPreview {
+                        diff,
+                        commands: batch.commands,
+                        warnings,
+                        errors,
+                        affects_connectivity: changes.affects_connectivity,
+                    })
+                }.await;
                 let _ = reply.send(result);
             }
             Command::Enable {
