@@ -394,14 +394,14 @@ impl<T: DeviceTransport> Session<T> {
         if !self.privileged {
             return Err(Error::PrivilegeEscalationFailed);
         }
-        let version_out = self.send_command("show version\r\n").await?;
+        let version_out = self.send_command("show version").await?;
         let mut identity = parse_version(&version_out).model;
 
         if let Some(ref h) = self.hostname {
             identity.hostname = h.clone();
         }
 
-        let inv_out = self.send_command("show inventory\r\n").await?;
+        let inv_out = self.send_command("show inventory").await?;
         parse_inventory(&mut identity, &inv_out);
 
         Ok(identity)
@@ -413,7 +413,7 @@ impl<T: DeviceTransport> Session<T> {
             return Err(Error::PrivilegeEscalationFailed);
         }
         let _ = self
-            .send_command("copy running-config startup-config\r\n")
+            .send_command("copy running-config startup-config")
             .await?;
         Ok(())
     }
