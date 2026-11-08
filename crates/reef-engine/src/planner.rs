@@ -313,6 +313,42 @@ mod tests {
                 enabled: true,
             },
         );
+        desired.acls.insert(
+            "Z-ACL".to_string(),
+            AclConfig {
+                name: "Z-ACL".to_string(),
+                acl_type: crate::model::AclType::Standard,
+                rules: Vec::new(),
+            },
+        );
+        desired.acls.insert(
+            "A-ACL".to_string(),
+            AclConfig {
+                name: "A-ACL".to_string(),
+                acl_type: crate::model::AclType::Standard,
+                rules: Vec::new(),
+            },
+        );
+        desired.dhcp_pools.insert(
+            "Z-POOL".to_string(),
+            DhcpPool {
+                name: "Z-POOL".to_string(),
+                network: "192.0.2.0/24".parse().unwrap(),
+                default_router: None,
+                dns_servers: Vec::new(),
+                lease_time: None,
+            },
+        );
+        desired.dhcp_pools.insert(
+            "A-POOL".to_string(),
+            DhcpPool {
+                name: "A-POOL".to_string(),
+                network: "198.51.100.0/24".parse().unwrap(),
+                default_router: None,
+                dns_servers: Vec::new(),
+                lease_time: None,
+            },
+        );
 
         let changes = plan(&current, &desired);
         let interface_names: Vec<_> = changes
@@ -327,6 +363,14 @@ mod tests {
             vec!["GigabitEthernet1/0/1", "GigabitEthernet1/0/2"]
         );
         assert_eq!(vlan_ids, vec![10, 20]);
+        let acl_names: Vec<_> = changes.acls.iter().map(|(name, _)| name.as_str()).collect();
+        let pool_names: Vec<_> = changes
+            .dhcp_pools
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(acl_names, vec!["A-ACL", "Z-ACL"]);
+        assert_eq!(pool_names, vec!["A-POOL", "Z-POOL"]);
     }
 
     #[test]
