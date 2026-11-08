@@ -542,7 +542,8 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                         errors,
                         affects_connectivity: changes.affects_connectivity,
                     })
-                }.await;
+                }
+                .await;
                 let _ = reply.send(result);
             }
             Command::Enable {
