@@ -168,6 +168,8 @@
         },
       });
       connectedProfile = profile;
+      workspace = null;
+      workspaceRefreshError = null;
       selectedProfile = null;
       password = "";
       activeSection = "Overview";
@@ -227,6 +229,8 @@
       await invoke("disconnect_device", { deviceId: connectedProfile.id });
       connectedProfile = null;
       deviceIdentity = null;
+      workspace = null;
+      workspaceRefreshError = null;
       identityError = null;
     } catch (error) {
       connectionError = String(error);
