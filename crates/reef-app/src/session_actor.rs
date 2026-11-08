@@ -844,7 +844,10 @@ mod tests {
     async fn shutdown_completes_and_rejects_subsequent_operations() {
         let actor = SessionActor::start().expect("actor should start");
 
-        actor.shutdown().await.expect("empty actor should shut down");
+        actor
+            .shutdown()
+            .await
+            .expect("empty actor should shut down");
 
         let error = actor
             .is_connected("missing-device".to_string())
