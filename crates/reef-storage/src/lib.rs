@@ -87,11 +87,8 @@ fn write_json_atomic(path: &Path, json: &[u8]) -> Result<(), Error> {
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| Error::Io(error.to_string()))?
         .as_nanos();
-    let temporary_path = path.with_file_name(format!(
-        ".{file_name}.{}.{}.tmp",
-        std::process::id(),
-        nonce
-    ));
+    let temporary_path =
+        path.with_file_name(format!(".{file_name}.{}.{}.tmp", std::process::id(), nonce));
 
     let write_result = (|| {
         let mut file = OpenOptions::new()
