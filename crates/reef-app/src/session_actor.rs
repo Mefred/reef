@@ -525,19 +525,35 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
 
                     let changes = reef_engine::planner::plan(&current, &desired);
                     let problems = reef_engine::validator::validate(&changes, &current);
-                    let errors = problems.iter()
-                        .filter(|problem| matches!(&problem.severity, &reef_engine::validator::Severity::Error))
+                    let errors = problems
+                        .iter()
+                        .filter(|problem| {
+                            matches!(
+                                &problem.severity,
+                                &reef_engine::validator::Severity::Error
+                            )
+                        })
                         .map(|problem| format!("{}: {}", problem.element, problem.message))
                         .collect::<Vec<_>>();
-                    let warnings = problems.iter()
-                        .filter(|problem| matches!(&problem.severity, &reef_engine::validator::Severity::Warning))
+                    let warnings = problems
+                        .iter()
+                        .filter(|problem| {
+                            matches!(
+                                &problem.severity,
+                                &reef_engine::validator::Severity::Warning
+                            )
+                        })
                         .map(|problem| format!("{}: {}", problem.element, problem.message))
                         .collect::<Vec<_>>();
                     let diff = reef_engine::diff::render(&changes);
                     let batch = reef_engine::generator::generate(&changes);
                     Ok(ConfigurationPreview {
                         diff,
-                        commands: if errors.is_empty() { batch.commands } else { Vec::new() },
+                        commands: if errors.is_empty() {
+                            batch.commands
+                        } else {
+                            Vec::new()
+                        },
                         warnings,
                         errors,
                         affects_connectivity: changes.affects_connectivity,
