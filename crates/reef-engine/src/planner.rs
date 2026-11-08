@@ -94,7 +94,10 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
     }
 
     // Interfaces
-    for (name, desired_iface) in &desired.interfaces {
+    let mut desired_interface_names: Vec<_> = desired.interfaces.keys().collect();
+    desired_interface_names.sort();
+    for name in desired_interface_names {
+        let desired_iface = &desired.interfaces[name];
         match current.interfaces.get(name) {
             None => cs
                 .interface_changes
@@ -109,7 +112,9 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
                 .push((name.clone(), ChangeOp::NoChange, None)),
         }
     }
-    for name in current.interfaces.keys() {
+    let mut current_interface_names: Vec<_> = current.interfaces.keys().collect();
+    current_interface_names.sort();
+    for name in current_interface_names {
         if !desired.interfaces.contains_key(name) {
             cs.interface_changes.push((
                 name.clone(),
@@ -120,7 +125,10 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
     }
 
     // VLANs
-    for (id, desired_vlan) in &desired.vlans {
+    let mut desired_vlan_ids: Vec<_> = desired.vlans.keys().collect();
+    desired_vlan_ids.sort();
+    for id in desired_vlan_ids {
+        let desired_vlan = &desired.vlans[id];
         match current.vlans.get(id) {
             None => cs.vlan_changes.push((*id, ChangeOp::Add)),
             Some(current_vlan) if current_vlan != desired_vlan => {
@@ -129,7 +137,9 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
             Some(_) => cs.vlan_changes.push((*id, ChangeOp::NoChange)),
         }
     }
-    for id in current.vlans.keys() {
+    let mut current_vlan_ids: Vec<_> = current.vlans.keys().collect();
+    current_vlan_ids.sort();
+    for id in current_vlan_ids {
         if !desired.vlans.contains_key(id) {
             cs.vlan_changes.push((*id, ChangeOp::Remove));
         }
@@ -172,7 +182,10 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
     }
 
     // ACLs
-    for (name, desired_acl) in &desired.acls {
+    let mut desired_acl_names: Vec<_> = desired.acls.keys().collect();
+    desired_acl_names.sort();
+    for name in desired_acl_names {
+        let desired_acl = &desired.acls[name];
         match current.acls.get(name) {
             None => cs.acls.push((name.clone(), ChangeOp::Add)),
             Some(current_acl) if current_acl != desired_acl => {
@@ -181,14 +194,19 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
             Some(_) => cs.acls.push((name.clone(), ChangeOp::NoChange)),
         }
     }
-    for name in current.acls.keys() {
+    let mut current_acl_names: Vec<_> = current.acls.keys().collect();
+    current_acl_names.sort();
+    for name in current_acl_names {
         if !desired.acls.contains_key(name) {
             cs.acls.push((name.clone(), ChangeOp::Remove));
         }
     }
 
     // DHCP pools
-    for (name, desired_pool) in &desired.dhcp_pools {
+    let mut desired_pool_names: Vec<_> = desired.dhcp_pools.keys().collect();
+    desired_pool_names.sort();
+    for name in desired_pool_names {
+        let desired_pool = &desired.dhcp_pools[name];
         match current.dhcp_pools.get(name) {
             None => cs.dhcp_pools.push((name.clone(), ChangeOp::Add)),
             Some(current_pool) if current_pool != desired_pool => {
@@ -197,7 +215,9 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
             Some(_) => cs.dhcp_pools.push((name.clone(), ChangeOp::NoChange)),
         }
     }
-    for name in current.dhcp_pools.keys() {
+    let mut current_pool_names: Vec<_> = current.dhcp_pools.keys().collect();
+    current_pool_names.sort();
+    for name in current_pool_names {
         if !desired.dhcp_pools.contains_key(name) {
             cs.dhcp_pools.push((name.clone(), ChangeOp::Remove));
         }
@@ -263,6 +283,55 @@ mod tests {
         let desired = DeviceConfig::default();
         let cs = plan(&current, &desired);
         assert!(matches!(cs.interface_changes[0].1, ChangeOp::Remove));
+    }
+
+    #[test]
+    fn plan_orders_hash_map_changes_deterministically() {
+        let current = DeviceConfig::default();
+        let mut desired = DeviceConfig::default();
+
+        desired.interfaces.insert(
+            "GigabitEthernet1/0/2".to_string(),
+            InterfaceConfig::default(),
+        );
+        desired.interfaces.insert(
+            "GigabitEthernet1/0/1".to_string(),
+            InterfaceConfig::default(),
+        );
+        desired.vlans.insert(
+            20,
+            crate::model::VlanConfig {
+                id: 20,
+                name: "USERS".to_string(),
+                enabled: true,
+            },
+        );
+        desired.vlans.insert(
+            10,
+            crate::model::VlanConfig {
+                id: 10,
+                name: "SERVERS".to_string(),
+                enabled: true,
+            },
+        );
+
+        let changes = plan(&current, &desired);
+        let interface_names: Vec<_> = changes
+            .interface_changes
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        let vlan_ids: Vec<_> = changes
+            .vlan_changes
+            .iter()
+            .map(|(id, _)| *id)
+            .collect();
+
+        assert_eq!(
+            interface_names,
+            vec!["GigabitEthernet1/0/1", "GigabitEthernet1/0/2"]
+        );
+        assert_eq!(vlan_ids, vec![10, 20]);
     }
 
     #[test]
