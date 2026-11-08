@@ -289,6 +289,29 @@ fn parse_interface_sub(
     name: &str,
     config: &mut DeviceConfig,
 ) -> Option<ParseWarning> {
+    if trimmed == "ip nat inside" || trimmed == "ip nat outside" {
+        let nat = config.nat.get_or_insert_with(NatConfig::default);
+        let interfaces = if trimmed.ends_with("inside") {
+            &mut nat.inside_interfaces
+        } else {
+            &mut nat.outside_interfaces
+        };
+        if !interfaces.iter().any(|interface| interface == name) {
+            interfaces.push(name.to_string());
+        }
+        return None;
+    }
+    if trimmed == "no ip nat inside" || trimmed == "no ip nat outside" {
+        if let Some(nat) = config.nat.as_mut() {
+            let interfaces = if trimmed.ends_with("inside") {
+                &mut nat.inside_interfaces
+            } else {
+                &mut nat.outside_interfaces
+            };
+            interfaces.retain(|interface| interface != name);
+        }
+        return None;
+    }
     let iface = match config.interfaces.get_mut(name) {
         Some(i) => i,
         None => {
@@ -365,29 +388,6 @@ fn parse_interface_sub(
             "full" => Some(crate::model::Duplex::Full),
             _ => None,
         };
-        return None;
-    }
-    if trimmed == "ip nat inside" || trimmed == "ip nat outside" {
-        let nat = config.nat.get_or_insert_with(NatConfig::default);
-        let interfaces = if trimmed.ends_with("inside") {
-            &mut nat.inside_interfaces
-        } else {
-            &mut nat.outside_interfaces
-        };
-        if !interfaces.iter().any(|interface| interface == name) {
-            interfaces.push(name.to_string());
-        }
-        return None;
-    }
-    if trimmed == "no ip nat inside" || trimmed == "no ip nat outside" {
-        if let Some(nat) = config.nat.as_mut() {
-            let interfaces = if trimmed.ends_with("inside") {
-                &mut nat.inside_interfaces
-            } else {
-                &mut nat.outside_interfaces
-            };
-            interfaces.retain(|interface| interface != name);
-        }
         return None;
     }
     if trimmed == "switchport mode access" {
@@ -845,18 +845,23 @@ line vty 0 4\n transport input ssh\n";
 
     #[test]
     fn parses_nat_and_ssh_without_exposing_secrets() {
-        let output = "ip ssh version 2\\n\\
-ip ssh time-out 45\\n\\
-ip ssh authentication-retries 3\\n\\
-ip nat pool PUBLIC 203.0.113.10 203.0.113.20 netmask 255.255.255.0\\n\\
-ip nat inside source list 10 pool PUBLIC overload\\n\\
-interface GigabitEthernet0/0/0\\n ip nat inside\\n\\
-interface GigabitEthernet0/0/1\\n ip nat outside\\n\\
-line vty 0 4\\n password super-secret\\n transport input ssh\\n";
+        let output = r#"ip ssh version 2
+ip ssh time-out 45
+ip ssh authentication-retries 3
+ip nat pool PUBLIC 203.0.113.10 203.0.113.20 netmask 255.255.255.0
+ip nat inside source list 10 pool PUBLIC overload
+interface GigabitEthernet0/0/0
+ ip nat inside
+interface GigabitEthernet0/0/1
+ ip nat outside
+line vty 0 4
+ password super-secret
+ transport input ssh
+"#;
         let parsed = parse_running_config(output);
         let ssh = parsed.model.ssh.as_ref().unwrap();
         assert!(ssh.enabled);
-        assert!(matches!(ssh.version, SshVersion::V2));
+        assert!(matches!(&ssh.version, SshVersion::V2));
         assert_eq!(ssh.timeout, Some(45));
         assert_eq!(ssh.authentication_retries, Some(3));
         let nat = parsed.model.nat.as_ref().unwrap();
