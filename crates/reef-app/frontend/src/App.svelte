@@ -687,7 +687,7 @@
               <div class="table-scroll"><table class="device-table">
                 <thead><tr><th>VLAN ID</th><th>Name</th><th>Status</th></tr></thead>
                 <tbody>{#each workspace.vlans as vlan (vlan.id)}
-                  <tr><td class="mono">{vlan.id}</td><td>{vlan.name}</td><td><span class="state-pill state-up">Active</span></td></tr>
+                  <tr><td class="mono">{vlan.id}</td><td>{vlan.name}</td><td><span class:state-up={vlan.enabled} class="state-pill">{vlan.enabled ? "Active" : "Suspended"}</span></td></tr>
                 {/each}</tbody>
               </table></div>
             {:else}
