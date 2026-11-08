@@ -132,10 +132,10 @@ Still pending:
 - Credential vault integration using each platform's native secure storage.
 - Device identification and parsed device inventory/dashboard.
 - ACL, DHCP, NAT, system, and full interface/VLAN/route configuration editing. The current operational and running-configuration views are read-only.
-- Integrate the existing configuration planner, validator, diff renderer, generator, and verifier into typed Tauri commands and a reviewable frontend workflow. The planner is currently engine-only and must not be mistaken for a connected/apply-capable UI.
+- Expand the typed, read-only planner preview beyond its initial system-settings scope. The current Tauri command reads the running configuration in the actor, applies only explicitly supplied hostname/domain/additive-DNS draft fields to a clone, validates and renders a diff, and returns generated commands for review. Input validation has unit coverage. The verifier is not yet integrated into the preview workflow.
 - Safe apply orchestration, verification, rollback, backups, and history.
 - Interactive terminal streaming, bounded output, cancellation, and operation progress.
-- Green CI on the latest branch head and platform packaging validation. Earlier CI runs exposed an invalid non-RGBA icon; the source icon has since been replaced with a 512×512 RGBA PNG. The latest branch head has a fresh three-platform CI run queued.
+- Green CI on the latest branch head and platform packaging validation. The source icon is now a 512×512 RGBA PNG. Cross-platform runs on an earlier head have passed Windows workspace checks, tests, and icon generation; current-head Linux, Windows, and macOS checks/builds remain in progress.
 
 The current increment is a functional connection/profile foundation, not feature parity. Do not report the migration complete until the acceptance criteria and corresponding integration tests pass.
 
