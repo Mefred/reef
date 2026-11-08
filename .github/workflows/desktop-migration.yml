@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 # Keep only the newest validation run for this PR/branch.
 concurrency:
@@ -39,33 +39,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-
-      - name: Regenerate Cargo lockfile
-        if: runner.os == 'Linux'
-        run: cargo generate-lockfile
-
-      - name: Commit regenerated Cargo lockfile
-        if: runner.os == 'Linux' && github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if ! git diff --quiet -- Cargo.lock; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add Cargo.lock
-            git commit -m 'chore: refresh Cargo.lock for Tauri migration'
-            git fetch origin "${GITHUB_HEAD_REF}"
-            git rebase --onto FETCH_HEAD HEAD~1 HEAD
-            git push origin "HEAD:${GITHUB_HEAD_REF}"
-          fi
-
-      - name: Upload regenerated Cargo lockfile
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: regenerated-cargo-lockfile
-          path: Cargo.lock
-          if-no-files-found: error
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
