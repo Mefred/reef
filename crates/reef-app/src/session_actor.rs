@@ -684,12 +684,12 @@ mod tests {
                 },
             ],
             vlans: vec![
-                VlanConfig {
+                super::VlanConfig {
                     id: 20,
                     name: "USERS".to_string(),
                     enabled: true,
                 },
-                VlanConfig {
+                super::VlanConfig {
                     id: 10,
                     name: "SERVERS".to_string(),
                     enabled: true,
