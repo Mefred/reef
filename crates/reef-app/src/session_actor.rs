@@ -290,6 +290,17 @@ impl SessionActor {
     }
 }
 
+/// Keep map-backed configuration sections stable across refreshes. HashMap
+/// iteration order is intentionally unspecified, but the UI and previews should
+/// not reorder unchanged device configuration between requests.
+fn sort_configuration_snapshot(snapshot: &mut ConfigurationSnapshot) {
+    snapshot.interfaces.sort_by(|left, right| left.name.cmp(&right.name));
+    snapshot.vlans.sort_by_key(|vlan| vlan.id);
+    snapshot.static_routes.sort();
+    snapshot.acls.sort_by(|left, right| left.name.cmp(&right.name));
+    snapshot.dhcp_pools.sort_by(|left, right| left.name.cmp(&right.name));
+}
+
 fn validate_hostname(value: &str) -> Result<String, String> {
     let hostname = value.trim();
     if hostname.is_empty()
@@ -457,7 +468,7 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                     .map(|output| {
                         let parsed = parse_running_config(&output);
                         let config = parsed.model;
-                        ConfigurationSnapshot {
+                        let mut snapshot = ConfigurationSnapshot {
                             hostname: config.hostname,
                             domain_name: config.ip_domain_name,
                             name_servers: config.ip_name_server,
@@ -525,7 +536,9 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                                     format!("line {}: {}", warning.line_no, warning.reason)
                                 })
                                 .collect(),
-                        }
+                        };
+                        sort_configuration_snapshot(&mut snapshot);
+                        snapshot
                     });
                 let _ = reply.send(result);
             }
@@ -638,6 +651,55 @@ mod tests {
     #[test]
     fn managed_actor_handle_is_send_and_sync() {
         assert_send_sync::<SessionActor>();
+    }
+
+    #[test]
+    fn configuration_snapshot_sections_are_sorted_deterministically() {
+        let mut snapshot = super::ConfigurationSnapshot {
+            hostname: None,
+            domain_name: None,
+            name_servers: Vec::new(),
+            interfaces: vec![
+                super::ConfiguredInterface {
+                    name: "GigabitEthernet0/0/2".to_string(),
+                    description: None,
+                    enabled: true,
+                    mode: "Routed".to_string(),
+                    ipv4: None,
+                    mtu: None,
+                },
+                super::ConfiguredInterface {
+                    name: "GigabitEthernet0/0/1".to_string(),
+                    description: None,
+                    enabled: true,
+                    mode: "Routed".to_string(),
+                    ipv4: None,
+                    mtu: None,
+                },
+            ],
+            vlans: vec![
+                VlanConfig { id: 20, name: "USERS".to_string(), enabled: true },
+                VlanConfig { id: 10, name: "SERVERS".to_string(), enabled: true },
+            ],
+            static_routes: vec!["192.0.2.0/24 via 192.0.2.1".to_string(), "10.0.0.0/8 via 10.0.0.1".to_string()],
+            acls: vec![
+                super::ConfiguredAcl { name: "Z-ACL".to_string(), acl_type: "Extended".to_string(), rules: Vec::new() },
+                super::ConfiguredAcl { name: "A-ACL".to_string(), acl_type: "Standard".to_string(), rules: Vec::new() },
+            ],
+            dhcp_pools: vec![
+                super::ConfiguredDhcpPool { name: "USERS".to_string(), network: "10.0.0.0/24".to_string(), default_router: None, dns_servers: Vec::new() },
+                super::ConfiguredDhcpPool { name: "SERVERS".to_string(), network: "192.0.2.0/24".to_string(), default_router: None, dns_servers: Vec::new() },
+            ],
+            warnings: Vec::new(),
+        };
+
+        super::sort_configuration_snapshot(&mut snapshot);
+
+        assert_eq!(snapshot.interfaces[0].name, "GigabitEthernet0/0/1");
+        assert_eq!(snapshot.vlans[0].id, 10);
+        assert_eq!(snapshot.static_routes[0], "10.0.0.0/8 via 10.0.0.1");
+        assert_eq!(snapshot.acls[0].name, "A-ACL");
+        assert_eq!(snapshot.dhcp_pools[0].name, "SERVERS");
     }
 
     #[test]
