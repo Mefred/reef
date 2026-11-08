@@ -317,8 +317,7 @@ mod tests {
         }
 
         async fn disconnect(&mut self) -> Result<(), Error> {
-            self.disconnect_calls
-                .set(self.disconnect_calls.get() + 1);
+            self.disconnect_calls.set(self.disconnect_calls.get() + 1);
             if self.fail_disconnect {
                 return Err(Error::Transport("simulated disconnect failure".to_string()));
             }
