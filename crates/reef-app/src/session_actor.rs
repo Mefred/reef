@@ -573,7 +573,10 @@ mod tests {
 
     #[test]
     fn validates_hostname_boundaries_and_characters() {
-        assert_eq!(super::validate_hostname(" Router-01 ").unwrap(), "Router-01");
+        assert_eq!(
+            super::validate_hostname(" Router-01 ").unwrap(),
+            "Router-01"
+        );
         assert!(super::validate_hostname("").is_err());
         assert!(super::validate_hostname(&"a".repeat(64)).is_err());
         assert!(super::validate_hostname("router.example").is_err());
