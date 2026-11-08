@@ -219,6 +219,8 @@
         workspace = null;
         workspaceRefreshError = null;
         configuration = null;
+        configurationPreview = null;
+        previewError = null;
         configurationError = null;
         identityError = null;
       }
@@ -240,6 +242,8 @@
       workspace = null;
       workspaceRefreshError = null;
       configuration = null;
+        configurationPreview = null;
+        previewError = null;
       configurationError = null;
       selectedProfile = null;
       password = "";
@@ -303,6 +307,8 @@
       workspace = null;
       workspaceRefreshError = null;
       configuration = null;
+        configurationPreview = null;
+        previewError = null;
       configurationError = null;
       identityError = null;
     } catch (error) {
