@@ -376,7 +376,10 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                                         .map(|rule| {
                                             format!(
                                                 "{:?} {:?} from {:?} to {:?}",
-                                                rule.action, rule.protocol, rule.source, rule.destination
+                                                rule.action,
+                                                rule.protocol,
+                                                rule.source,
+                                                rule.destination
                                             )
                                         })
                                         .collect(),
@@ -388,7 +391,9 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                                 .map(|pool| ConfiguredDhcpPool {
                                     name: pool.name,
                                     network: pool.network.to_string(),
-                                    default_router: pool.default_router.map(|router| router.to_string()),
+                                    default_router: pool
+                                        .default_router
+                                        .map(|router| router.to_string()),
                                     dns_servers: pool
                                         .dns_servers
                                         .into_iter()
