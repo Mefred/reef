@@ -141,3 +141,22 @@ Still pending:
 
 The current increment is a functional connection/profile foundation, not feature parity. Do not report the migration complete until the acceptance criteria and corresponding integration tests pass.
 
+## System inspection view
+
+The Svelte workspace includes a dedicated read-only System view. It presents the hostname,
+domain name, configured IPv4/IPv6 name servers, and sanitized parser diagnostics from the
+running-configuration snapshot. It reuses the existing `get_device_configuration` command;
+no new device command or configuration-write path is introduced. Secret-bearing line
+configuration remains excluded from frontend serialization.
+
+## Legacy Slint workflow audit
+
+The retained Slint controller exposes additional configuration workflows for interfaces,
+VLANs, static routes, ACLs, DHCP, NAT, SSH/access, and global system settings, plus
+configuration preview/apply, rollback, and save operations. The Tauri migration currently
+covers live interface/VLAN/route inspection, read-only configuration/ACL/DHCP/System
+inspection, and a restricted system/VLAN preview. NAT and SSH/access inspection, editable
+configuration parity, backup/history, and apply/rollback orchestration remain outstanding.
+The old controller's apply/rollback implementation is not treated as a safe implementation
+template: its backup and save behavior, failure handling, and verification boundaries need
+a separate safety review before any write workflow is migrated.
