@@ -195,6 +195,9 @@ enum Command {
         draft: ConfigurationDraft,
         reply: oneshot::Sender<Result<ConfigurationPreview, String>>,
     },
+    Shutdown {
+        reply: oneshot::Sender<Result<(), String>>,
+    },
 }
 
 /// Thread-safe handle to the thread-affine session manager.
@@ -358,6 +361,19 @@ impl SessionActor {
             .await
             .map_err(|_| "session actor stopped before replying".to_string())?
     }
+
+    /// Stop the actor after disconnecting all active device transports.
+    /// The reply is sent only after cleanup has completed.
+    pub async fn shutdown(&self) -> Result<(), String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::Shutdown { reply })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before shutdown completed".to_string())?
+    }
 }
 
 /// Keep map-backed configuration sections stable across refreshes. HashMap
@@ -452,7 +468,10 @@ fn validate_vlan_draft(id: u16, name: &str) -> Result<String, String> {
 async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
     let mut manager = SessionManager::new();
 
-    while let Some(command) = receiver.recv().await {
+    let shutdown_reply = loop {
+        let Some(command) = receiver.recv().await else {
+            break None;
+        };
         match command {
             Command::Connect {
                 device_id,
@@ -766,13 +785,28 @@ async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
                     .map_err(|error| error.to_string());
                 let _ = reply.send(result);
             }
+            Command::Shutdown { reply } => break Some(reply),
         }
-    }
+    };
 
     // The actor owns every transport. Close them before its runtime and thread
     // are dropped; report individual failures without skipping other sessions.
-    for (device_id, error) in manager.disconnect_all().await {
+    let failures = manager.disconnect_all().await;
+    for (device_id, error) in &failures {
         tracing::warn!(%device_id, %error, "failed to disconnect device during session actor shutdown");
+    }
+
+    if let Some(reply) = shutdown_reply {
+        let result = if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures
+                .into_iter()
+                .map(|(device_id, error)| format!("{device_id}: {error}"))
+                .collect::<Vec<_>>()
+                .join("; "))
+        };
+        let _ = reply.send(result);
     }
 }
 
@@ -785,6 +819,19 @@ mod tests {
     #[test]
     fn managed_actor_handle_is_send_and_sync() {
         assert_send_sync::<SessionActor>();
+    }
+
+    #[tokio::test]
+    async fn shutdown_completes_and_rejects_subsequent_operations() {
+        let actor = SessionActor::start().expect("actor should start");
+
+        actor.shutdown().await.expect("empty actor should shut down");
+
+        let error = actor
+            .is_connected("missing-device".to_string())
+            .await
+            .expect_err("stopped actor should reject new work");
+        assert!(error.contains("unavailable"));
     }
 
     #[tokio::test]
