@@ -40,7 +40,13 @@ impl<T: DeviceTransport> Session<T> {
         self.config = config.clone();
         self.reset_session_state();
 
-        self.transport.connect().await?;
+        if let Err(error) = self.transport.connect().await {
+            // A transport may allocate resources before reporting a handshake
+            // or initialization error. Give it a chance to release them.
+            let _ = self.transport.disconnect().await;
+            self.reset_session_state();
+            return Err(error);
+        }
         self.paging_disabled = true;
 
         if let Err(error) = self.perform_login().await {
