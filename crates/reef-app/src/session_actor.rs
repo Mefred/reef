@@ -810,6 +810,9 @@ mod tests {
                     dns_servers: Vec::new(),
                 },
             ],
+            nat: None,
+            ssh: None,
+            line_access: Vec::new(),
             warnings: Vec::new(),
         };
 
