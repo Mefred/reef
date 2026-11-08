@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 # Keep only the newest validation run for this PR/branch.
 concurrency:
@@ -43,6 +43,19 @@ jobs:
       - name: Regenerate Cargo lockfile
         if: runner.os == 'Linux'
         run: cargo generate-lockfile
+
+      - name: Commit regenerated Cargo lockfile
+        if: runner.os == 'Linux' && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! git diff --quiet -- Cargo.lock; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add Cargo.lock
+            git commit -m 'chore: refresh Cargo.lock for Tauri migration'
+            git push origin "HEAD:${GITHUB_HEAD_REF}"
+          fi
 
       - name: Upload regenerated Cargo lockfile
         if: runner.os == 'Linux'
