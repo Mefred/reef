@@ -528,20 +528,14 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                     let errors = problems
                         .iter()
                         .filter(|problem| {
-                            matches!(
-                                &problem.severity,
-                                &reef_engine::validator::Severity::Error
-                            )
+                            problem.severity == reef_engine::validator::Severity::Error
                         })
                         .map(|problem| format!("{}: {}", problem.element, problem.message))
                         .collect::<Vec<_>>();
                     let warnings = problems
                         .iter()
                         .filter(|problem| {
-                            matches!(
-                                &problem.severity,
-                                &reef_engine::validator::Severity::Warning
-                            )
+                            problem.severity == reef_engine::validator::Severity::Warning
                         })
                         .map(|problem| format!("{}: {}", problem.element, problem.message))
                         .collect::<Vec<_>>();
