@@ -132,7 +132,7 @@ Still pending:
 
 - Full Slint screen/controller audit and extraction of all domain workflows.
 - Credential vault integration using each platform's native secure storage.
-- Device identification and parsed device inventory/dashboard.
+- Parsed device identity and an overview dashboard showing chassis/processor details, discovered interface state counts, and detected platform capabilities.
 - ACL, DHCP, NAT, system, and full interface/VLAN/route configuration editing. The current operational and running-configuration views are read-only.
 - Expand the typed, read-only planner preview beyond its initial system-settings scope. The current Tauri command reads the running configuration in the actor, applies only explicitly supplied hostname/domain/additive-DNS draft fields to a clone, validates and renders a diff, and returns generated commands for review. Input validation has unit coverage. The verifier is not yet integrated into the preview workflow.
 - Safe apply orchestration, verification, rollback, backups, and history.
