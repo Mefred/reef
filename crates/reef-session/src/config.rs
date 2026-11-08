@@ -20,7 +20,9 @@ pub enum HostKeyPolicy {
 
 impl Default for HostKeyPolicy {
     fn default() -> Self {
-        HostKeyPolicy::Warn
+        // Unknown host keys must be explicitly enrolled. A warning-only
+        // default would silently trust a first-seen or changed endpoint.
+        HostKeyPolicy::Reject
     }
 }
 
@@ -103,5 +105,16 @@ impl ConnectionConfig {
             .map(|p| p.config_dir().to_path_buf())
             .unwrap_or_else(|| std::env::temp_dir())
             .join("known_hosts")
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::HostKeyPolicy;
+
+    #[test]
+    fn unknown_host_keys_are_rejected_by_default() {
+        assert_eq!(HostKeyPolicy::default(), HostKeyPolicy::Reject);
     }
 }
