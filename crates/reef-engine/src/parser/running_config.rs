@@ -8,8 +8,8 @@
 use super::{ParseResult, ParseWarning};
 use crate::model::{
     AclConfig, AclRule, AclType, Action, AddressSpec, DeviceConfig, DhcpPool, InterfaceConfig,
-    InterfaceMode, NatConfig, NatPool, NatRule, PortSpec, Protocol, Secret, StaticRoute,
-    VlanConfig,
+    InterfaceMode, NatConfig, NatPool, NatRule, PortSpec, Protocol, Secret, SshConfig,
+    SshVersion, StaticRoute, VlanConfig,
 };
 use std::net::IpAddr;
 
@@ -194,10 +194,67 @@ fn parse_top_level(
         });
         return ConfigBlock::DhcpPool(name);
     }
-    if trimmed.starts_with("ip nat ") || trimmed.starts_with("no ip nat ") {
+    if let Some(rest) = trimmed.strip_prefix("ip nat pool ") {
+        let parts: Vec<&str> = rest.split_whitespace().collect();
+        if parts.len() == 5 && parts[3] == "netmask" {
+            if let (Ok(start), Ok(end), Ok(netmask)) = (
+                parts[1].parse::<std::net::Ipv4Addr>(),
+                parts[2].parse::<std::net::Ipv4Addr>(),
+                parts[4].parse::<std::net::Ipv4Addr>(),
+            ) {
+                let nat = config.nat.get_or_insert_with(NatConfig::default);
+                nat.pools.push(NatPool { name: parts[0].to_string(), start, end, netmask });
+                return ConfigBlock::None;
+            }
+        }
+        warnings.push(ParseWarning::new(0, trimmed.to_string(), "unparsed NAT pool".to_string()));
         return ConfigBlock::None;
     }
-    if trimmed.starts_with("ip ssh ") {
+    if let Some(rest) = trimmed.strip_prefix("ip nat inside source list ") {
+        let parts: Vec<&str> = rest.split_whitespace().collect();
+        if parts.len() >= 3 && parts[1] == "pool" {
+            let nat = config.nat.get_or_insert_with(NatConfig::default);
+            nat.rules.push(NatRule {
+                name: format!("{} -> {}", parts[0], parts[2]),
+                source_acl: Some(parts[0].to_string()),
+                pool: Some(parts[2].to_string()),
+                overload: parts.iter().any(|part| *part == "overload"),
+            });
+            return ConfigBlock::None;
+        }
+        warnings.push(ParseWarning::new(0, trimmed.to_string(), "unsupported NAT source rule".to_string()));
+        return ConfigBlock::None;
+    }
+    if trimmed.starts_with("ip nat ") || trimmed.starts_with("no ip nat ") {
+        warnings.push(ParseWarning::new(0, trimmed.to_string(), "unsupported NAT command".to_string()));
+        return ConfigBlock::None;
+    }
+    if let Some(rest) = trimmed.strip_prefix("ip ssh ") {
+        let ssh = config.ssh.get_or_insert(SshConfig {
+            enabled: true,
+            version: SshVersion::V2,
+            timeout: None,
+            authentication_retries: None,
+        });
+        let parts: Vec<&str> = rest.split_whitespace().collect();
+        match parts.as_slice() {
+            ["version", "1"] => ssh.version = SshVersion::V1,
+            ["version", "2"] => ssh.version = SshVersion::V2,
+            ["version", "1.99"] => ssh.version = SshVersion::Both,
+            ["time-out", value] => ssh.timeout = value.parse().ok(),
+            ["authentication-retries", value] => ssh.authentication_retries = value.parse().ok(),
+            _ => warnings.push(ParseWarning::new(0, trimmed.to_string(), "unsupported SSH setting".to_string())),
+        }
+        return ConfigBlock::None;
+    }
+    if trimmed == "no ip ssh" {
+        let ssh = config.ssh.get_or_insert(SshConfig {
+            enabled: false,
+            version: SshVersion::V2,
+            timeout: None,
+            authentication_retries: None,
+        });
+        ssh.enabled = false;
         return ConfigBlock::None;
     }
     if trimmed.starts_with("line ") {
@@ -308,6 +365,29 @@ fn parse_interface_sub(
             "full" => Some(crate::model::Duplex::Full),
             _ => None,
         };
+        return None;
+    }
+    if trimmed == "ip nat inside" || trimmed == "ip nat outside" {
+        let nat = config.nat.get_or_insert_with(NatConfig::default);
+        let interfaces = if trimmed.ends_with("inside") {
+            &mut nat.inside_interfaces
+        } else {
+            &mut nat.outside_interfaces
+        };
+        if !interfaces.iter().any(|interface| interface == name) {
+            interfaces.push(name.to_string());
+        }
+        return None;
+    }
+    if trimmed == "no ip nat inside" || trimmed == "no ip nat outside" {
+        if let Some(nat) = config.nat.as_mut() {
+            let interfaces = if trimmed.ends_with("inside") {
+                &mut nat.inside_interfaces
+            } else {
+                &mut nat.outside_interfaces
+            };
+            interfaces.retain(|interface| interface != name);
+        }
         return None;
     }
     if trimmed == "switchport mode access" {
@@ -761,6 +841,33 @@ line vty 0 4\n transport input ssh\n";
 
         let vty = r.model.line_configs.get("vty 0 4").unwrap();
         assert!(matches!(vty.transport[0], crate::model::Transport::Ssh));
+    }
+
+    #[test]
+    fn parses_nat_and_ssh_without_exposing_secrets() {
+        let output = "ip ssh version 2\\n\\
+ip ssh time-out 45\\n\\
+ip ssh authentication-retries 3\\n\\
+ip nat pool PUBLIC 203.0.113.10 203.0.113.20 netmask 255.255.255.0\\n\\
+ip nat inside source list 10 pool PUBLIC overload\\n\\
+interface GigabitEthernet0/0/0\\n ip nat inside\\n\\
+interface GigabitEthernet0/0/1\\n ip nat outside\\n\\
+line vty 0 4\\n password super-secret\\n transport input ssh\\n";
+        let parsed = parse_running_config(output);
+        let ssh = parsed.model.ssh.as_ref().unwrap();
+        assert!(ssh.enabled);
+        assert!(matches!(ssh.version, SshVersion::V2));
+        assert_eq!(ssh.timeout, Some(45));
+        assert_eq!(ssh.authentication_retries, Some(3));
+        let nat = parsed.model.nat.as_ref().unwrap();
+        assert_eq!(nat.inside_interfaces, vec!["GigabitEthernet0/0/0"]);
+        assert_eq!(nat.outside_interfaces, vec!["GigabitEthernet0/0/1"]);
+        assert_eq!(nat.pools[0].name, "PUBLIC");
+        assert_eq!(nat.rules[0].source_acl.as_deref(), Some("10"));
+        assert!(nat.rules[0].overload);
+        let line = parsed.model.line_configs.get("vty 0 4").unwrap();
+        assert!(line.password.is_some());
+        assert!(line.transport.contains(&crate::model::Transport::Ssh));
     }
 
     #[test]
