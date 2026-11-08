@@ -151,7 +151,7 @@
     if (deviceId && ["Interfaces", "VLANs", "Routing"].includes(activeSection)) {
       void refreshWorkspace(deviceId);
     }
-    if (deviceId && ["Configuration", "Access Lists", "DHCP"].includes(activeSection)) {
+    if (deviceId && ["Configuration", "Access Lists", "DHCP", "System"].includes(activeSection)) {
       void refreshConfiguration(deviceId);
     }
   });
@@ -165,6 +165,7 @@
     { label: "Configuration", icon: "⌘" },
     { label: "Access Lists", icon: "▦" },
     { label: "DHCP", icon: "⇥" },
+    { label: "System", icon: "⚙" },
     { label: "Terminal", icon: ">_" },
   ];
 
@@ -795,6 +796,55 @@
             </div>
           {/if}
           <p class="security-note">This is a read-only snapshot. Reef does not apply configuration changes from this screen yet. Secret-bearing lines are not returned to the frontend.</p>
+        {/if}
+      {:else if activeSection === "System"}
+        <div class="workspace-toolbar">
+          <div>
+            <h2>System settings</h2>
+            <p>Read-only device identity and global network settings parsed from running configuration.</p>
+          </div>
+          {#if connectedProfile}
+            <button class="secondary-button" onclick={() => void refreshConfiguration(connectedProfile!.id)} disabled={configurationLoading}>
+              {configurationLoading ? "Refreshing…" : "Refresh configuration"}
+            </button>
+          {/if}
+        </div>
+        {#if !connectedProfile}
+          <div class="empty-panel">
+            <div class="welcome-icon">⌁</div>
+            <h2>Connect a device first</h2>
+            <p>System settings are available after establishing a device session.</p>
+            <button class="primary-button" onclick={() => (activeSection = "Connections")}>Open connections</button>
+          </div>
+        {:else if configurationError}
+          <div class="profile-state error-state"><strong>Unable to retrieve system settings</strong><span>{configurationError}</span></div>
+        {:else if configurationLoading && !configuration}
+          <div class="profile-state">Retrieving system settings…</div>
+        {:else if configuration}
+          <div class="config-summary-grid">
+            <article class="config-summary-card"><span>HOSTNAME</span><strong>{configuration.hostname || "Not configured"}</strong></article>
+            <article class="config-summary-card"><span>DOMAIN NAME</span><strong>{configuration.domainName || "Not configured"}</strong></article>
+            <article class="config-summary-card"><span>NAME SERVERS</span><strong>{configuration.nameServers.length}</strong></article>
+          </div>
+          <div class="data-panel config-section">
+            <div class="data-panel-heading">
+              <div><h2>DNS resolvers</h2><p>Configured IPv4 and IPv6 name servers</p></div>
+            </div>
+            {#if configuration.nameServers.length}
+              {#each configuration.nameServers as server (server)}
+                <div class="config-list-row"><span class="mono">{server}</span></div>
+              {/each}
+            {:else}
+              <p class="config-empty">No name servers are configured.</p>
+            {/if}
+          </div>
+          {#if configuration.warnings.length}
+            <div class="data-panel config-section">
+              <div class="data-panel-heading"><div><h2>Parser diagnostics</h2><p>{configuration.warnings.length} configuration lines were not fully recognized</p></div></div>
+              <div class="config-warnings">{#each configuration.warnings as warning, index (index)}<p>{warning}</p>{/each}</div>
+            </div>
+          {/if}
+          <p class="security-note">Read-only inspection. Credentials, line passwords, and other secret-bearing fields are not exposed in this view.</p>
         {/if}
       {:else if activeSection === "Access Lists" || activeSection === "DHCP"}
         <div class="workspace-toolbar">
