@@ -341,11 +341,9 @@ fn validate_vlan_draft(id: u16, name: &str) -> Result<String, String> {
     let name = name.trim();
     if name.is_empty()
         || name.len() > 32
-        || !name
-            .chars()
-            .all(|character| {
-                character.is_ascii_alphanumeric() || character == '_' || character == '-'
-            })
+        || !name.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '-'
+        })
     {
         return Err(
             "VLAN name must be 1-32 ASCII letters, digits, underscores, or hyphens".to_string(),
@@ -667,7 +665,10 @@ mod tests {
 
     #[test]
     fn validates_vlan_id_ranges_and_names() {
-        assert_eq!(super::validate_vlan_draft(10, " USERS-01 ").unwrap(), "USERS-01");
+        assert_eq!(
+            super::validate_vlan_draft(10, " USERS-01 ").unwrap(),
+            "USERS-01"
+        );
         assert!(super::validate_vlan_draft(1, "DEFAULT").is_err());
         assert!(super::validate_vlan_draft(1002, "FDDI").is_err());
         assert!(super::validate_vlan_draft(4095, "INVALID").is_err());
