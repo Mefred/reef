@@ -98,19 +98,23 @@ impl Storage {
         Ok(Storage { data_dir: dir })
     }
 
-    fn profile_path(&self, profile_id: &str) -> Result<PathBuf, Error> {
-        if profile_id.is_empty()
-            || !profile_id
+    fn record_path(&self, directory: &str, id: &str) -> Result<PathBuf, Error> {
+        if id.is_empty()
+            || !id
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
         {
-            return Err(Error::Io("invalid profile id".to_string()));
+            return Err(Error::Io("invalid storage record id".to_string()));
         }
 
         Ok(self
             .data_dir
-            .join("profiles")
-            .join(format!("{profile_id}.json")))
+            .join(directory)
+            .join(format!("{id}.json")))
+    }
+
+    fn profile_path(&self, profile_id: &str) -> Result<PathBuf, Error> {
+        self.record_path("profiles", profile_id)
     }
 
     /// Save a device connection profile.
@@ -158,10 +162,7 @@ impl Storage {
 
     /// Save a configuration backup.
     pub fn save_backup(&self, backup: &ConfigBackup) -> Result<(), Error> {
-        let path = self
-            .data_dir
-            .join("backups")
-            .join(format!("{}.json", backup.id));
+        let path = self.record_path("backups", &backup.id)?;
         let json = serde_json::to_string_pretty(backup)
             .map_err(|e| Error::Serialization(e.to_string()))?;
         let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
@@ -194,20 +195,14 @@ impl Storage {
 
     /// Get a backup by ID.
     pub fn get_backup(&self, backup_id: &str) -> Result<ConfigBackup, Error> {
-        let path = self
-            .data_dir
-            .join("backups")
-            .join(format!("{}.json", backup_id));
+        let path = self.record_path("backups", backup_id)?;
         let data = fs::read_to_string(&path).map_err(|_| Error::NotFound(backup_id.to_string()))?;
         serde_json::from_str(&data).map_err(|e| Error::Serialization(e.to_string()))
     }
 
     /// Record a change in the history.
     pub fn record_change(&self, record: &ChangeRecord) -> Result<(), Error> {
-        let path = self
-            .data_dir
-            .join("history")
-            .join(format!("{}.json", record.id));
+        let path = self.record_path("history", &record.id)?;
         let json = serde_json::to_string_pretty(record)
             .map_err(|e| Error::Serialization(e.to_string()))?;
         let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
@@ -294,6 +289,14 @@ mod tests {
         let storage = Storage::open().expect("storage should open");
         assert!(storage.profile_path("../outside").is_err());
         assert!(storage.profile_path("").is_err());
+    }
+
+    #[test]
+    fn backup_and_history_ids_reject_path_traversal() {
+        let storage = Storage::open().expect("storage should open");
+        assert!(storage.record_path("backups", "../outside").is_err());
+        assert!(storage.record_path("history", "../../outside").is_err());
+        assert!(storage.record_path("backups", "").is_err());
     }
 
     #[test]
