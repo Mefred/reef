@@ -98,7 +98,7 @@ pub async fn send_device_command(
 /// frontend bridge or terminal scrollback with an arbitrarily large response.
 fn bound_command_output(mut output: String) -> String {
     const MAX_OUTPUT_BYTES: usize = 1024 * 1024;
-    const TRUNCATION_NOTICE: &str = "\\r\\n[output truncated at 1 MiB]\\r\\n";
+    const TRUNCATION_NOTICE: &str = "\r\n[output truncated at 1 MiB]\r\n";
 
     if output.len() > MAX_OUTPUT_BYTES {
         let mut end = MAX_OUTPUT_BYTES;
@@ -221,7 +221,7 @@ mod tests {
         let output = format!("{}é", "x".repeat(1024 * 1024));
         let bounded = bound_command_output(output);
         assert!(bounded.len() < 1024 * 1024 + 64);
-        assert!(bounded.ends_with("\\r\\n[output truncated at 1 MiB]\\r\\n"));
+        assert!(bounded.ends_with("\r\n[output truncated at 1 MiB]\r\n"));
         assert!(bounded.is_char_boundary(bounded.len()));
         assert!(!bound_command_output("short output".to_string()).contains("truncated"));
     }
