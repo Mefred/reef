@@ -136,3 +136,4 @@ Still pending:
 - Green CI on the latest branch head and platform packaging validation. Earlier CI runs exposed an invalid non-RGBA icon; the source icon has since been replaced with a 512×512 RGBA PNG. The latest branch head has a fresh three-platform CI run queued.
 
 The current increment is a functional connection/profile foundation, not feature parity. Do not report the migration complete until the acceptance criteria and corresponding integration tests pass.
+
