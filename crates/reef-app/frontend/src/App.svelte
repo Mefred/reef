@@ -291,6 +291,9 @@
     } catch (error) {
       connectionError = String(error);
     } finally {
+      // Do not retain credentials in reactive frontend state after an attempt.
+      password = "";
+      enableSecret = "";
       connecting = false;
     }
   }
@@ -311,6 +314,8 @@
     } catch (error) {
       identityError = String(error);
     } finally {
+      // A failed privilege escalation must not leave the secret in the UI state.
+      privilegeSecret = "";
       enablingDevice = false;
     }
   }
