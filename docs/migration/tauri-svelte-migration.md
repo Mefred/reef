@@ -117,7 +117,8 @@ Implemented in the migration branch:
 - Transient password and enable-secret fields are passed only to the connection command and are not part of the profile DTO.
 - A dedicated thread-affine session actor owns `SessionManager` on a current-thread Tokio runtime with a `LocalSet`.
 - Tauri managed state contains only the actor's message-channel handle, not the non-Send manager.
-- Connect, disconnect, command-send, connection-status, identify, and privilege-escalation actor operations are exposed through typed Tauri commands.
+- Connect, disconnect, command-send, connection-status, identify, privilege-escalation, and device-workspace inspection actor operations are exposed through typed Tauri commands.
+- Initial live Interfaces, VLANs, and static Routing views query IOS CLI output through the actor and parse it with the existing transport-independent `reef-engine` parsers. Per-command errors are isolated so one unsupported command does not suppress the other sections.
 - The session layer now records authenticated/privileged state from the detected IOS XE prompt, so an already-privileged session can be used without an unnecessary enable exchange.
 - Unknown SSH host keys are rejected by default; the UI requires an explicit trust action before accepting and recording an unknown key.
 - An initial xterm.js terminal sends commands through the actor and displays complete command responses. This is request/response execution, not a continuous interactive byte stream.
@@ -128,9 +129,9 @@ Still pending:
 - Full Slint screen/controller audit and extraction of all domain workflows.
 - Credential vault integration using each platform's native secure storage.
 - Device identification and parsed device inventory/dashboard.
-- Interface, VLAN, route, ACL, DHCP, NAT, and system management views.
+- ACL, DHCP, NAT, system, and full interface/VLAN/route configuration management views. The current operational views are read-only and show a subset of CLI state.
 - Configuration planning, diff, apply, verification, rollback, backups, and history.
 - Interactive terminal streaming, bounded output, cancellation, and operation progress.
-- Actual CI results and platform packaging validation.
+- Green CI on the latest branch head and platform packaging validation. Earlier CI runs exposed an invalid non-RGBA icon; the source icon has since been replaced with a 512×512 RGBA PNG and a fresh three-platform run is in progress.
 
 The current increment is a functional connection/profile foundation, not feature parity. Do not report the migration complete until the acceptance criteria and corresponding integration tests pass.
