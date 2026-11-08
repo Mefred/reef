@@ -38,11 +38,34 @@ impl<T: DeviceTransport> Session<T> {
     /// disables paging, performs login authentication, and detects the initial prompt.
     pub async fn connect(&mut self, config: &ConnectionConfig) -> Result<(), Error> {
         self.config = config.clone();
+        self.reset_session_state();
+
         self.transport.connect().await?;
         self.paging_disabled = true;
-        self.perform_login().await?;
-        let _ = self.refresh_prompt().await?;
+
+        if let Err(error) = self.perform_login().await {
+            // Authentication or prompt negotiation failed after the transport
+            // opened. Do not leave a half-initialized connection behind.
+            let _ = self.transport.disconnect().await;
+            self.reset_session_state();
+            return Err(error);
+        }
+
+        if let Err(error) = self.refresh_prompt().await {
+            let _ = self.transport.disconnect().await;
+            self.reset_session_state();
+            return Err(error);
+        }
+
         Ok(())
+    }
+
+    fn reset_session_state(&mut self) {
+        self.authenticated = false;
+        self.privileged = false;
+        self.paging_disabled = false;
+        self.current_mode = PromptMode::Unknown(String::new());
+        self.hostname = None;
     }
 
     /// Perform login authentication (username/password) for transports that require it.
@@ -134,13 +157,11 @@ impl<T: DeviceTransport> Session<T> {
 
     /// Disconnect from the device.
     pub async fn disconnect(&mut self) -> Result<(), Error> {
-        self.transport.disconnect().await?;
-        self.authenticated = false;
-        self.privileged = false;
-        self.paging_disabled = false;
-        self.current_mode = PromptMode::Unknown(String::new());
-        self.hostname = None;
-        Ok(())
+        let result = self.transport.disconnect().await;
+        // Clear local authentication and prompt state even if the underlying
+        // transport reports a close error. The session must not appear usable.
+        self.reset_session_state();
+        result
     }
 
     pub fn is_connected(&self) -> bool {
