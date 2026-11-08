@@ -107,10 +107,7 @@ impl Storage {
             return Err(Error::Io("invalid storage record id".to_string()));
         }
 
-        Ok(self
-            .data_dir
-            .join(directory)
-            .join(format!("{id}.json")))
+        Ok(self.data_dir.join(directory).join(format!("{id}.json")))
     }
 
     fn profile_path(&self, profile_id: &str) -> Result<PathBuf, Error> {
