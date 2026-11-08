@@ -417,9 +417,25 @@
                 <p>{deviceIdentity.hostname} · {deviceIdentity.platform} · IOS XE {deviceIdentity.iosxe_version}</p>
                 <div class="device-summary">
                   <span><strong>{deviceIdentity.interfaces.length}</strong> discovered interfaces</span>
+                  <span><strong>{deviceIdentity.interfaces.filter((item) => item.oper_status?.toLowerCase() === "up").length}</strong> operationally up</span>
+                  <span><strong>{deviceIdentity.interfaces.filter((item) => item.oper_status?.toLowerCase() === "down").length}</strong> down</span>
                   <span><strong>{deviceIdentity.processor || "Unknown"}</strong> processor</span>
+                  <span><strong>{deviceIdentity.chassis_serial || "Unavailable"}</strong> chassis serial</span>
                 </div>
-                <span class="coming-soon">DEVICE IDENTIFIED · CONFIGURATION VIEWS IN PROGRESS</span>
+                <div class="device-summary">
+                  {#each [
+                    { label: "Layer 2 switching", enabled: deviceIdentity.capabilities.supports_l2_switchports },
+                    { label: "IPv6", enabled: deviceIdentity.capabilities.supports_ipv6 },
+                    { label: "Static routing", enabled: deviceIdentity.capabilities.supports_static_routing },
+                    { label: "Dynamic routing", enabled: deviceIdentity.capabilities.supports_dynamic_routing },
+                    { label: "NAT", enabled: deviceIdentity.capabilities.supports_nat },
+                    { label: "DHCP", enabled: deviceIdentity.capabilities.supports_dhcp },
+                    { label: "ACLs", enabled: deviceIdentity.capabilities.supports_acl }
+                  ] as capability}
+                    <span><strong>{capability.enabled ? "Supported" : "Not detected"}</strong> · {capability.label}</span>
+                  {/each}
+                </div>
+                <span class="coming-soon">DEVICE IDENTIFIED · LIVE INSPECTION AVAILABLE</span>
               {:else if identityError}
                 <p class="form-error">Connected, but device identification failed: {identityError}</p>
                 <div class="privilege-panel">
