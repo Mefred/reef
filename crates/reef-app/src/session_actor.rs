@@ -593,7 +593,10 @@ mod tests {
 
     #[test]
     fn normalizes_ipv4_and_ipv6_name_servers() {
-        assert_eq!(super::normalize_name_server(" 1.1.1.1 ").unwrap(), "1.1.1.1");
+        assert_eq!(
+            super::normalize_name_server(" 1.1.1.1 ").unwrap(),
+            "1.1.1.1"
+        );
         assert_eq!(
             super::normalize_name_server("2001:4860:4860::8888").unwrap(),
             "2001:4860:4860::8888"
