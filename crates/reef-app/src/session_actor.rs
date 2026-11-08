@@ -8,14 +8,13 @@ use std::thread;
 
 use reef_engine::model::{DeviceIdentity, InterfaceRef, StaticRoute, VlanConfig};
 use reef_engine::parser::{parse_interfaces, parse_routes, parse_vlans};
-use serde::Serialize;
 use reef_session::{
     ConnectionConfig, SerialTransport, SessionManager, SshTransport, TelnetTransport, TransportType,
 };
+use serde::Serialize;
 use tokio::runtime::Builder;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::LocalSet;
-
 
 /// Parsed operational data for the device workspace. Individual command
 /// failures are reported independently so unsupported commands do not hide
@@ -149,8 +148,6 @@ impl SessionActor {
             .await
             .map_err(|_| "session actor stopped before replying".to_string())?
     }
-
-
     pub async fn inspect(&self, device_id: String) -> Result<DeviceWorkspace, String> {
         let (reply, response) = oneshot::channel();
         self.sender
@@ -243,7 +240,9 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                 let _ = reply.send(result);
             }
             Command::Inspect { device_id, reply } => {
-                let interfaces = manager.send_command(&device_id, "show ip interface brief").await;
+                let interfaces = manager
+                    .send_command(&device_id, "show ip interface brief")
+                    .await;
                 let vlans = manager.send_command(&device_id, "show vlan brief").await;
                 let routes = manager.send_command(&device_id, "show ip route").await;
 
