@@ -191,8 +191,8 @@ mod tests {
     fn device_command_must_be_a_single_bounded_line() {
         assert!(validate_device_command("show version").is_ok());
         assert!(validate_device_command("   ").is_err());
-        assert!(validate_device_command("show version\\nreload").is_err());
-        assert!(validate_device_command("show\\u{0000}version").is_err());
+        assert!(validate_device_command("show version\nreload").is_err());
+        assert!(validate_device_command("show\u{0000}version").is_err());
         assert!(validate_device_command(&"x".repeat(4097)).is_err());
         assert!(validate_device_command(&"x".repeat(4096)).is_ok());
     }
