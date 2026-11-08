@@ -294,11 +294,17 @@ impl SessionActor {
 /// iteration order is intentionally unspecified, but the UI and previews should
 /// not reorder unchanged device configuration between requests.
 fn sort_configuration_snapshot(snapshot: &mut ConfigurationSnapshot) {
-    snapshot.interfaces.sort_by(|left, right| left.name.cmp(&right.name));
+    snapshot
+        .interfaces
+        .sort_by(|left, right| left.name.cmp(&right.name));
     snapshot.vlans.sort_by_key(|vlan| vlan.id);
     snapshot.static_routes.sort();
-    snapshot.acls.sort_by(|left, right| left.name.cmp(&right.name));
-    snapshot.dhcp_pools.sort_by(|left, right| left.name.cmp(&right.name));
+    snapshot
+        .acls
+        .sort_by(|left, right| left.name.cmp(&right.name));
+    snapshot
+        .dhcp_pools
+        .sort_by(|left, right| left.name.cmp(&right.name));
 }
 
 fn validate_hostname(value: &str) -> Result<String, String> {
@@ -678,17 +684,46 @@ mod tests {
                 },
             ],
             vlans: vec![
-                VlanConfig { id: 20, name: "USERS".to_string(), enabled: true },
-                VlanConfig { id: 10, name: "SERVERS".to_string(), enabled: true },
+                VlanConfig {
+                    id: 20,
+                    name: "USERS".to_string(),
+                    enabled: true,
+                },
+                VlanConfig {
+                    id: 10,
+                    name: "SERVERS".to_string(),
+                    enabled: true,
+                },
             ],
-            static_routes: vec!["192.0.2.0/24 via 192.0.2.1".to_string(), "10.0.0.0/8 via 10.0.0.1".to_string()],
+            static_routes: vec![
+                "192.0.2.0/24 via 192.0.2.1".to_string(),
+                "10.0.0.0/8 via 10.0.0.1".to_string(),
+            ],
             acls: vec![
-                super::ConfiguredAcl { name: "Z-ACL".to_string(), acl_type: "Extended".to_string(), rules: Vec::new() },
-                super::ConfiguredAcl { name: "A-ACL".to_string(), acl_type: "Standard".to_string(), rules: Vec::new() },
+                super::ConfiguredAcl {
+                    name: "Z-ACL".to_string(),
+                    acl_type: "Extended".to_string(),
+                    rules: Vec::new(),
+                },
+                super::ConfiguredAcl {
+                    name: "A-ACL".to_string(),
+                    acl_type: "Standard".to_string(),
+                    rules: Vec::new(),
+                },
             ],
             dhcp_pools: vec![
-                super::ConfiguredDhcpPool { name: "USERS".to_string(), network: "10.0.0.0/24".to_string(), default_router: None, dns_servers: Vec::new() },
-                super::ConfiguredDhcpPool { name: "SERVERS".to_string(), network: "192.0.2.0/24".to_string(), default_router: None, dns_servers: Vec::new() },
+                super::ConfiguredDhcpPool {
+                    name: "USERS".to_string(),
+                    network: "10.0.0.0/24".to_string(),
+                    default_router: None,
+                    dns_servers: Vec::new(),
+                },
+                super::ConfiguredDhcpPool {
+                    name: "SERVERS".to_string(),
+                    network: "192.0.2.0/24".to_string(),
+                    default_router: None,
+                    dns_servers: Vec::new(),
+                },
             ],
             warnings: Vec::new(),
         };
