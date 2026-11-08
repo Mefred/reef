@@ -37,7 +37,8 @@ fn main() {
             commands::devices::device_is_connected,
             commands::devices::identify_device,
             commands::devices::enable_device,
-            commands::devices::inspect_device_workspace
+            commands::devices::inspect_device_workspace,
+            commands::devices::get_device_configuration
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Reef desktop application");
