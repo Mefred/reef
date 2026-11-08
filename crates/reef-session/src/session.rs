@@ -53,14 +53,27 @@ impl<T: DeviceTransport> Session<T> {
             .read_available(Duration::from_secs(5))
             .await?;
 
-        // Check if we're already at a prompt (some devices don't require login)
-        if detect(&out).map_or(false, |p| {
-            matches!(p.mode, PromptMode::UserExec | PromptMode::PrivilegedExec)
-        }) {
-            return Ok(());
+        // Check if we're already at a prompt (some devices don't require login).
+        // The initial prompt may be consumed by this read, so record its state
+        // here rather than relying on a later refresh to see it again.
+        if let Some(prompt) = detect(&out) {
+            if matches!(
+                &prompt.mode,
+                PromptMode::UserExec | PromptMode::PrivilegedExec
+            ) {
+                self.current_mode = prompt.mode.clone();
+                self.authenticated = true;
+                self.privileged = matches!(&prompt.mode, PromptMode::PrivilegedExec);
+                if let Some(hostname) = extract_hostname(&prompt.raw) {
+                    self.hostname = Some(hostname);
+                }
+                return Ok(());
+            }
         }
 
-        // Send username if prompted
+        // Send username if prompted. Keep the final response because reading
+        // the prompt consumes it from the transport buffer.
+        let mut prompt_output = out.clone();
         if out.to_lowercase().contains("username:") || out.to_lowercase().contains("login:") {
             if self.config.username.is_empty() {
                 return Err(Error::AuthFailed);
@@ -68,7 +81,8 @@ impl<T: DeviceTransport> Session<T> {
             self.transport
                 .send(format!("{}\r\n", self.config.username).as_str())
                 .await?;
-            let out2 = self.read_until_prompt().await?;
+            let out2 = self.read_login_response().await?;
+            prompt_output = out2.clone();
             if out2.to_lowercase().contains("password:") {
                 if self.config.password.is_none() {
                     return Err(Error::AuthFailed);
@@ -76,7 +90,19 @@ impl<T: DeviceTransport> Session<T> {
                 self.transport
                     .send(format!("{}\r\n", self.config.password.as_ref().unwrap()).as_str())
                     .await?;
-                let _ = self.read_until_prompt().await?;
+                prompt_output = self.read_login_response().await?;
+            }
+        }
+
+        if let Some(prompt) = prompt_output.lines().rev().find_map(detect) {
+            self.current_mode = prompt.mode.clone();
+            self.authenticated = matches!(
+                &prompt.mode,
+                PromptMode::UserExec | PromptMode::PrivilegedExec
+            );
+            self.privileged = matches!(&prompt.mode, PromptMode::PrivilegedExec);
+            if let Some(hostname) = extract_hostname(&prompt.raw) {
+                self.hostname = Some(hostname);
             }
         }
 
@@ -133,6 +159,47 @@ impl<T: DeviceTransport> Session<T> {
         self.transport.transport_type()
     }
 
+    /// Read login output until a password request or an EXEC prompt appears.
+    /// Login prompts cannot use read_until_prompt because the current CLI mode
+    /// is not known yet and the next response may be "Password:" rather than
+    /// the normal EXEC prompt character.
+    async fn read_login_response(&mut self) -> Result<String, Error> {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        let mut output = String::new();
+
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(Error::Timeout);
+            }
+
+            let chunk = self.transport.read_available(remaining).await?;
+            if !chunk.is_empty() {
+                output.push_str(&chunk);
+            }
+
+            if output.to_lowercase().contains("password:") {
+                return Ok(output);
+            }
+
+            if output
+                .lines()
+                .rev()
+                .find_map(detect)
+                .map_or(false, |prompt| {
+                    matches!(
+                        &prompt.mode,
+                        PromptMode::UserExec | PromptMode::PrivilegedExec
+                    )
+                })
+            {
+                return Ok(output);
+            }
+
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
     /// Read from the transport until the current prompt is seen again.
     async fn read_until_prompt(&mut self) -> Result<String, Error> {
         let expect = match self.current_mode {
@@ -168,6 +235,17 @@ impl<T: DeviceTransport> Session<T> {
         for line in out.lines() {
             if let Some(p) = detect(line) {
                 self.current_mode = p.mode.clone();
+                match &self.current_mode {
+                    PromptMode::PrivilegedExec => {
+                        self.privileged = true;
+                        self.authenticated = true;
+                    }
+                    PromptMode::UserExec => {
+                        self.privileged = false;
+                        self.authenticated = true;
+                    }
+                    _ => {}
+                }
                 if matches!(
                     self.current_mode,
                     PromptMode::PrivilegedExec | PromptMode::UserExec
@@ -186,26 +264,78 @@ impl<T: DeviceTransport> Session<T> {
         if self.privileged {
             return Ok(());
         }
-        let out = self.send_and_read("enable\r\n").await?;
-        let is_password_prompt = out.contains("Password:")
-            || detect(&out).map_or(false, |p| matches!(p.mode, PromptMode::PasswordPrompt));
-        if is_password_prompt {
-            self.transport
-                .send(format!("{}\r\n", secret).as_str())
-                .await?;
-            let out2 = self.read_until_prompt().await?;
-            if out2.contains("% Invalid input") || !out2.contains("#") {
+
+        self.transport.send("enable\r\n").await?;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        let mut output = String::new();
+        let mut prompt_mode = None;
+
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(Error::Timeout);
+            }
+
+            let chunk = self.transport.read_available(remaining).await?;
+            if !chunk.is_empty() {
+                output.push_str(&chunk);
+            }
+
+            if output.to_lowercase().contains("password:") {
+                break;
+            }
+
+            if let Some(prompt) = output.lines().rev().find_map(detect) {
+                if matches!(
+                    &prompt.mode,
+                    PromptMode::UserExec | PromptMode::PrivilegedExec
+                ) {
+                    prompt_mode = Some(prompt.mode);
+                    break;
+                }
+            }
+
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+
+        if output.to_lowercase().contains("password:") {
+            if secret.is_empty() {
                 return Err(Error::PrivilegeEscalationFailed);
             }
-        }
-        self.refresh_prompt().await?;
-        if matches!(self.current_mode, PromptMode::PrivilegedExec) {
-            self.privileged = true;
-            self.authenticated = true;
-            Ok(())
+
+            self.transport
+                .send(format!("{secret}\r\n").as_str())
+                .await?;
+            let response = self
+                .transport
+                .read_until("#", Duration::from_secs(10))
+                .await?;
+            if response.to_lowercase().contains("% invalid input") {
+                return Err(Error::PrivilegeEscalationFailed);
+            }
+
+            let Some(prompt) = response.lines().rev().find_map(detect) else {
+                return Err(Error::PrivilegeEscalationFailed);
+            };
+            if !matches!(&prompt.mode, PromptMode::PrivilegedExec) {
+                return Err(Error::PrivilegeEscalationFailed);
+            }
+            self.current_mode = prompt.mode.clone();
+            if let Some(hostname) = extract_hostname(&prompt.raw) {
+                self.hostname = Some(hostname);
+            }
+        } else if let Some(mode) = prompt_mode {
+            if !matches!(&mode, PromptMode::PrivilegedExec) {
+                return Err(Error::PrivilegeEscalationFailed);
+            }
+            self.current_mode = mode;
         } else {
-            Err(Error::PrivilegeEscalationFailed)
+            return Err(Error::PrivilegeEscalationFailed);
         }
+
+        self.privileged = true;
+        self.authenticated = true;
+        Ok(())
     }
 
     /// Enter global configuration mode.

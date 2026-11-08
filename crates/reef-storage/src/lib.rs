@@ -98,18 +98,42 @@ impl Storage {
         Ok(Storage { data_dir: dir })
     }
 
-    /// Save a device connection profile.
-    pub fn save_profile(&self, profile: &DeviceProfile) -> Result<(), Error> {
-        let path = self
+    fn profile_path(&self, profile_id: &str) -> Result<PathBuf, Error> {
+        if profile_id.is_empty()
+            || !profile_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(Error::Io("invalid profile id".to_string()));
+        }
+
+        Ok(self
             .data_dir
             .join("profiles")
-            .join(format!("{}.json", profile.id));
+            .join(format!("{profile_id}.json")))
+    }
+
+    /// Save a device connection profile.
+    pub fn save_profile(&self, profile: &DeviceProfile) -> Result<(), Error> {
+        let path = self.profile_path(&profile.id)?;
         let json = serde_json::to_string_pretty(profile)
             .map_err(|e| Error::Serialization(e.to_string()))?;
         let mut file = fs::File::create(&path).map_err(|e| Error::Io(e.to_string()))?;
         file.write_all(json.as_bytes())
             .map_err(|e| Error::Io(e.to_string()))?;
         Ok(())
+    }
+
+    /// Delete a saved device connection profile.
+    pub fn delete_profile(&self, profile_id: &str) -> Result<(), Error> {
+        let path = self.profile_path(profile_id)?;
+        fs::remove_file(&path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                Error::NotFound(profile_id.to_string())
+            } else {
+                Error::Io(error.to_string())
+            }
+        })
     }
 
     /// List all saved device profiles.
@@ -263,6 +287,13 @@ mod tests {
         let profiles = s.list_profiles().expect("list profiles");
         assert_eq!(profiles.len(), 1);
         assert_eq!(profiles[0].host, "10.0.0.1");
+    }
+
+    #[test]
+    fn profile_id_rejects_path_traversal() {
+        let storage = Storage::open().expect("storage should open");
+        assert!(storage.profile_path("../outside").is_err());
+        assert!(storage.profile_path("").is_err());
     }
 
     #[test]

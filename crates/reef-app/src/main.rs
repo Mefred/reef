@@ -1,20 +1,43 @@
-//! Reef application entry point.
+//! Reef desktop application entry point.
 //!
-//! Slint desktop GUI that drives the reef-engine configuration engine through
-//! reef-session transport sessions.
+//! Tauri owns the desktop lifecycle. The session actor keeps the existing
+//! thread-affine SessionManager isolated from Tauri's Send + Sync state.
 
-mod app;
-mod ui;
+mod commands;
+mod session_actor;
+
+use std::sync::Arc;
 
 use reef_logging::init;
+use reef_storage::Storage;
+use session_actor::SessionActor;
+use tauri::Manager;
 
 fn main() {
-    // Initialize logging (REEF_LOG env var controls filter).
     let _ = init();
-
     tracing::info!("Starting Reef application");
 
-    // Launch Slint main window (blocks until window is closed).
-    let app_window = app::AppWindow::new().expect("failed to create Slint window");
-    app_window.show().expect("failed to show Slint window");
+    tauri::Builder::default()
+        .setup(|app| {
+            let storage =
+                Storage::open().map_err(|error| std::io::Error::other(error.to_string()))?;
+            app.manage(Arc::new(storage));
+
+            let session_actor = SessionActor::start().map_err(std::io::Error::other)?;
+            app.manage(session_actor);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::profiles::list_profiles,
+            commands::profiles::save_profile,
+            commands::profiles::delete_profile,
+            commands::devices::connect_device,
+            commands::devices::disconnect_device,
+            commands::devices::send_device_command,
+            commands::devices::device_is_connected,
+            commands::devices::identify_device,
+            commands::devices::enable_device
+        ])
+        .run(tauri::generate_context!())
+        .expect("failed to run Reef desktop application");
 }
