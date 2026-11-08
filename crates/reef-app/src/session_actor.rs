@@ -352,7 +352,9 @@ fn sort_configuration_snapshot(snapshot: &mut ConfigurationSnapshot) {
     snapshot
         .dhcp_pools
         .sort_by(|left, right| left.name.cmp(&right.name));
-    snapshot.line_access.sort_by(|left, right| left.line.cmp(&right.line));
+    snapshot
+        .line_access
+        .sort_by(|left, right| left.line.cmp(&right.line));
     if let Some(nat) = snapshot.nat.as_mut() {
         nat.inside_interfaces.sort();
         nat.outside_interfaces.sort();
@@ -592,18 +594,26 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                             nat: config.nat.map(|nat| ConfiguredNat {
                                 inside_interfaces: nat.inside_interfaces,
                                 outside_interfaces: nat.outside_interfaces,
-                                pools: nat.pools.into_iter().map(|pool| ConfiguredNatPool {
-                                    name: pool.name,
-                                    start: pool.start.to_string(),
-                                    end: pool.end.to_string(),
-                                    netmask: pool.netmask.to_string(),
-                                }).collect(),
-                                rules: nat.rules.into_iter().map(|rule| ConfiguredNatRule {
-                                    name: rule.name,
-                                    source_acl: rule.source_acl,
-                                    pool: rule.pool,
-                                    overload: rule.overload,
-                                }).collect(),
+                                pools: nat
+                                    .pools
+                                    .into_iter()
+                                    .map(|pool| ConfiguredNatPool {
+                                        name: pool.name,
+                                        start: pool.start.to_string(),
+                                        end: pool.end.to_string(),
+                                        netmask: pool.netmask.to_string(),
+                                    })
+                                    .collect(),
+                                rules: nat
+                                    .rules
+                                    .into_iter()
+                                    .map(|rule| ConfiguredNatRule {
+                                        name: rule.name,
+                                        source_acl: rule.source_acl,
+                                        pool: rule.pool,
+                                        overload: rule.overload,
+                                    })
+                                    .collect(),
                             }),
                             ssh: config.ssh.map(|ssh| ConfiguredSsh {
                                 enabled: ssh.enabled,
@@ -611,15 +621,19 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                                 timeout: ssh.timeout,
                                 authentication_retries: ssh.authentication_retries,
                             }),
-                            line_access: config.line_configs.into_values().map(|line| {
-                                ConfiguredLineAccess {
+                            line_access: config
+                                .line_configs
+                                .into_values()
+                                .map(|line| ConfiguredLineAccess {
                                     line: line.line,
                                     login_required: line.login,
-                                    transport: line.transport.into_iter().map(|transport| {
-                                        format!("{:?}", transport)
-                                    }).collect(),
-                                }
-                            }).collect(),
+                                    transport: line
+                                        .transport
+                                        .into_iter()
+                                        .map(|transport| format!("{:?}", transport))
+                                        .collect(),
+                                })
+                                .collect(),
                             warnings: parsed
                                 .warnings
                                 .into_iter()
