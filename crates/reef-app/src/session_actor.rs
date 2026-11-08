@@ -207,19 +207,33 @@ impl SessionActor {
     /// Start the dedicated session thread and its local Tokio runtime.
     pub fn start() -> Result<Self, String> {
         let (sender, receiver) = mpsc::channel(64);
+        let (startup_sender, startup_receiver) = std::sync::mpsc::sync_channel(1);
 
         thread::Builder::new()
             .name("reef-session-actor".to_string())
             .spawn(move || {
-                let runtime = Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("failed to create Reef session runtime");
+                let runtime = match Builder::new_current_thread().enable_all().build() {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        let _ = startup_sender.send(Err(format!(
+                            "failed to create Reef session runtime: {error}"
+                        )));
+                        return;
+                    }
+                };
                 let local = LocalSet::new();
+
+                if startup_sender.send(Ok(())).is_err() {
+                    return;
+                }
 
                 runtime.block_on(local.run_until(run_actor(receiver)));
             })
-            .map_err(|error| format!("failed to start session actor: {error}"))?;
+            .map_err(|error| format!("failed to start session actor thread: {error}"))?;
+
+        startup_receiver
+            .recv()
+            .map_err(|_| "session actor stopped during startup".to_string())??;
 
         Ok(Self { sender })
     }
