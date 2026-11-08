@@ -1,38 +1,37 @@
 # Reef desktop migration: Slint to Tauri 2
 
-## Decision
+## Goal
 
-Replace the Slint desktop frontend with a Tauri 2 desktop application using Svelte 5, TypeScript, and Vite. Preserve the existing Rust workspace crates and their device/configuration responsibilities. The migration targets Linux, Windows, and macOS.
+Replace Reef's Slint desktop application with a Tauri 2 desktop application using Svelte 5, TypeScript, and Vite.
 
-This is a complete UI rewrite, not a rewrite of the configuration engine or transport implementations.
+This is a desktop-framework migration, not a rewrite of Reef's network-management product. Keep the existing Rust domain, parser, planner, transport, storage, and logging crates as the source of truth. Do not expand the PR into new configuration-management features merely because the new frontend makes them possible.
 
-## Repository baseline
+## Existing architecture
 
-The existing workspace contains:
+The Rust workspace contains:
 
-- `reef-engine`: device models, configuration parsing, planning, generation, and verification.
-- `reef-session`: transport/session abstractions and SSH, Telnet, and serial support.
-- `reef-storage`: persisted profiles and configuration data.
+- `reef-engine`: device models, parsing, planning, command generation, diffing, and verification.
+- `reef-session`: SSH, Telnet, serial, and session lifecycle.
+- `reef-storage`: profiles and persisted configuration data.
 - `reef-logging`: application logging.
-- `reef-app`: current Slint desktop application.
+- `reef-app`: desktop entry point and UI integration.
 
-The current application wires Slint callbacks directly to a `ScreenController`, which owns a session manager through `Rc<RefCell<SessionManager>>`. The controller also contains Slint-specific callbacks. Existing UI callbacks use `Runtime::block_on`, which can block the UI thread.
+The old Slint application used a `SessionManager` backed by `Rc<RefCell<...>>`. That manager is not suitable for direct storage in Tauri's thread-safe managed state. The Tauri host therefore uses a dedicated session actor that owns the manager on a current-thread Tokio runtime and `LocalSet`; Tauri commands communicate with it through a thread-safe handle. Do not add unsafe `Send`/`Sync` implementations or move the manager into Tauri state.
 
 ## Target architecture
 
 ```text
 Svelte 5 + TypeScript + Vite
           |
-          | typed Tauri commands, events, and channels
+          | Tauri commands / events
           v
-Tauri host (reef-app)
+Tauri 2 desktop host
   - command handlers
-  - application state
-  - application services
-  - event publication
+  - persistent application state
+  - session actor handle
           |
           v
-Rust domain crates
+Existing Rust workspace crates
   - reef-engine
   - reef-session
   - reef-storage
@@ -42,141 +41,63 @@ Rust domain crates
 Network devices (SSH / Telnet / serial)
 ```
 
-The frontend must remain a presentation layer. It must not implement device protocols, parse CLI output, generate device configuration, or hold long-lived device credentials.
+The frontend is a presentation layer. Device protocols, CLI parsing, configuration planning, and persistence stay in Rust.
 
-## Critical session ownership constraint
+## Migration decisions
 
-The existing `SessionManager` stores sessions using `Rc<RefCell<Box<dyn DynSession>>>` and its transport/session trait objects are designed for a single-threaded owner. Do not put this manager directly into Tauri managed state, do not assume replacing `Rc` with `Arc` is sufficient, and do not use unsafe Send/Sync implementations.
+- Frontend: Svelte 5, TypeScript, and Vite.
+- Desktop host: Tauri 2.
+- Platforms: Linux, Windows, and macOS desktop.
+- Preserve the existing Rust workspace and domain boundaries.
+- Use typed Tauri commands for request/response operations.
+- Keep the non-`Send` session manager isolated behind the session actor.
+- Keep credentials out of saved profile JSON and logs.
+- Keep Tauri capabilities minimal; the current frontend only needs the core application capability.
+- Keep the current configuration preview review-only. Do not introduce device configuration writes as part of the framework migration.
 
-Preferred migration path: introduce a session actor that owns the non-Send manager on a dedicated thread with a Tokio current-thread runtime and `LocalSet`. Expose only a thread-safe actor handle to Tauri state, using message channels and oneshot responses. Keep operations asynchronous from the command handler's perspective. Evaluate whether transport internals can eventually become Send before considering removal of the actor.
+## Existing UI scope
 
-## Application boundaries
+The previous Slint window had a working connection flow and interface editor. Several other navigation sections were placeholders ("coming soon") or had no implemented content. The migration should not treat those placeholders as missing features that must be built in this PR.
 
-- Keep `reef-engine` transport- and UI-independent.
-- Remove Slint callbacks and UI property mutation from the controller; extract a UI-independent device workspace/service.
-- Define serializable request/response DTOs at the application boundary.
-- Keep command handlers thin: validate, delegate, map errors, return results.
-- Use Tauri events for low-volume lifecycle/progress notifications and channels for ordered/high-volume terminal streams.
-- Assign operation IDs; support cancellation only where it can be made safe.
-- Never block the Tauri command executor with synchronous network work.
+The Tauri frontend currently provides:
 
-## Frontend
+- Saved SSH, Telnet, and serial profiles.
+- Connect/disconnect, device identification, privilege escalation, and command execution.
+- Explicit trust handling for unknown SSH host keys.
+- An overview dashboard.
+- Live interface, VLAN, and static-route inspection.
+- Sanitized running-configuration inspection for system settings, ACLs, DHCP, supported NAT syntax, SSH settings, and line access policy.
+- A bounded xterm.js request/response terminal.
+- A read-only configuration preview for hostname, domain name, additive DNS servers, and add-only VLAN creation.
 
-Use Svelte 5, TypeScript, Vite, pnpm, Tailwind CSS, shadcn-svelte, and Lucide icons. Add xterm.js for the interactive terminal when terminal integration begins. Keep dependencies purposeful and pin the package manager/lockfile.
+The old Slint interface editor is the one notable implemented UI workflow that is not yet represented as an editable workflow in the Tauri UI; the current Tauri Interfaces view is inspection-only. Decide explicitly whether to restore that narrow workflow before calling the migration complete. Do not substitute a broader configuration editor or unsafe apply implementation.
 
-Design direction: dark neutral foundation, Reef mint accent (`#36D8A2`), responsive desktop layout, connection-first launch, one primary application window, persistent navigation, device identity/status in the top bar, and explicit loading/empty/error/disconnected states.
+## Migration acceptance criteria
 
-The first-run flow must prioritize connecting to or creating a device profile. After a successful connection, reveal the device workspace. Do not show device-specific controls as if they were usable while disconnected.
+- Tauri 2 is the only desktop host and application entry point.
+- Svelte is the only desktop UI.
+- Slint runtime/build dependencies, macros, generated UI integration, and source files are removed.
+- The application builds and launches in development mode.
+- The production desktop build and bundle configuration are valid.
+- The existing Rust workspace crates remain independent of the UI framework.
+- The session manager is safely isolated from Tauri's thread model.
+- Existing Tauri frontend workflows work through registered Rust commands.
+- Linux, Windows, and macOS CI builds pass.
+- README and development instructions describe only the Tauri application.
 
-## Security and persistence
+## Explicitly out of scope
 
-- Store profile metadata in `reef-storage`; never store passwords or enable secrets in plaintext profile files.
-- Integrate with OS credential facilities through a Rust abstraction (Secret Service/keyring on Linux, Windows Credential Manager, macOS Keychain).
-- Do not log secrets or include them in events.
-- Keep SSH host-key verification enabled and make trust decisions explicit.
-- Use restrictive Tauri capabilities; add permissions only when a feature requires them.
-- Keep arbitrary shell execution out of the frontend API.
-- Use atomic writes for configuration and backup artifacts.
+These are product/security improvements, not requirements for changing the UI framework:
 
-## Migration phases
+- Native OS credential vault integration (Keychain, Credential Manager, Secret Service).
+- New or comprehensive interface, VLAN, route, ACL, DHCP, NAT, SSH, or system editors.
+- New configuration apply, backup, verification, or rollback workflows.
+- Continuous terminal streaming, cancellation, and operation progress.
+- Expanding IOS parser coverage beyond what the existing application needs.
+- Mobile targets, auto-updating, code signing, and release distribution infrastructure.
 
-1. Audit all existing Slint screens, callbacks, controller methods, storage behavior, and tests.
-2. Decouple controller/domain behavior from Slint; introduce typed DTOs and the session actor.
-3. Establish Tauri 2 host, Svelte/Vite frontend, capabilities, and cross-platform build configuration.
-4. Build the shared design system and responsive application shell.
-5. Implement connection manager, profile persistence, credential integration, and connection lifecycle.
-6. Restore device dashboard, interfaces, VLANs, routing, ACL, DHCP, NAT, and system views supported by the backend.
-7. Restore configuration inspection, planning, diff, apply, verification, rollback, backups, and history.
-8. Integrate interactive terminal and background operation UX.
-9. Complete automated tests, platform packaging, docs, and remove all Slint dependencies/assets.
+Do not hold the framework migration open for these unrelated features. Track them separately after the Tauri replacement is complete.
 
-Keep the application buildable at each phase. Do not delete the old implementation until the replacement has equivalent tested behavior; however, the final PR must remove Slint entirely.
+## Verification
 
-## Acceptance criteria
-
-- No Slint runtime, build dependency, build script, generated UI, or source assets remain.
-- Existing Rust engine and transport behavior is preserved.
-- No blocking network operation runs on the UI thread.
-- Session lifecycle is safe under Tauri's threading model.
-- All existing supported device-management workflows are available in the new UI.
-- Connection profiles and OS-backed credential handling work.
-- Configuration preview/apply/verify/rollback are validated against a real device or realistic integration environment.
-- Terminal streaming is ordered, bounded, and responsive.
-- Linux, Windows, and macOS build/package workflows pass.
-- Rust formatting, Clippy, unit/integration tests, frontend checks, and production builds pass.
-- Clean installation and upgrade behavior are documented and tested.
-
-## Current implementation status
-
-Implemented in the migration branch:
-
-- Tauri 2 host and Svelte 5/Vite frontend shell.
-- Tauri-managed persistent profile storage and asynchronous list/create/delete commands.
-- Profile IDs are constrained to safe filename characters before storage paths are built.
-- Connection form supports SSH, Telnet, and serial profile types.
-- Transient password and enable-secret fields are passed only to the connection command and are not part of the profile DTO.
-- A dedicated thread-affine session actor owns `SessionManager` on a current-thread Tokio runtime with a `LocalSet`.
-- Tauri managed state contains only the actor's message-channel handle, not the non-Send manager.
-- Connect, disconnect, command-send, connection-status, identify, privilege-escalation, and device-workspace inspection actor operations are exposed through typed Tauri commands.
-- Initial live Interfaces, VLANs, and static Routing views query IOS CLI output through the actor and parse it with the existing transport-independent `reef-engine` parsers. Per-command errors are isolated so one unsupported command does not suppress the other sections.
-- A read-only Running Configuration view retrieves `show running-config`, parses it through `parse_running_config`, and returns a deliberately sanitized DTO containing hostname/domain, interfaces, VLANs, static routes, ACL names and parsed rules, DHCP pool networks/routers/DNS servers, and parser warnings. Secret-bearing line passwords and other sensitive configuration fields are not serialized to the frontend. Parser diagnostics expose only line numbers and warning reasons, never the unrecognized raw configuration text.
-- Dedicated Access Lists and DHCP navigation views reuse that sanitized snapshot to present parsed ACL rules and DHCP pool details independently, including refresh, loading, empty, and error states. Both views are inspection-only; no ACL or DHCP configuration is sent to the device.
-- Configuration snapshot collections are sorted by stable interface names, VLAN IDs, route text, ACL names, and DHCP pool names so refreshes do not depend on hash-map iteration order.
-- The existing `reef-engine` configuration planner, validator, command generator, diff renderer, and verifier remain available as pure Rust domain logic. The planner now sorts map-backed interface, VLAN, ACL, and DHCP changes so previews and generated command order are deterministic; focused ordering tests cover interfaces, VLANs, ACLs, and DHCP pools. It also emits one system-level modification operation when any hostname, domain, or DNS setting changes, preventing the generator from repeating the full system command block for each changed field.
-- The session layer now records authenticated/privileged state from the detected IOS XE prompt, so an already-privileged session can be used without an unnecessary enable exchange.
-- Unknown SSH host keys are rejected by default; the UI requires an explicit trust action before accepting and recording an unknown key.
-- An initial xterm.js terminal sends commands through the actor and displays complete command responses. This is request/response execution, not a continuous interactive byte stream.
-- Cross-platform GitHub Actions checks are defined for Linux, Windows, and macOS.
-
-Still pending:
-
-- Complete domain-workflow extraction and feature-parity audit. The retained Slint screen has placeholder-only VLAN, routing, ACL, DHCP, NAT, SSH, and system panels; its controller contains legacy edit/apply methods that require independent safety review before migration.
-- Credential vault integration using each platform's native secure storage.
-- Parsed device identity and an overview dashboard showing chassis/processor details, discovered interface state counts, and detected platform capabilities. The live VLAN inspection view also reflects the parsed enabled/suspended state rather than assuming every VLAN is active.
-- ACL, DHCP, NAT, system, and full interface/VLAN/route configuration editing. The current operational and running-configuration views are read-only.
-- Expand the typed, read-only planner preview beyond its initial system-settings scope. The current Tauri command reads the running configuration in the actor, applies only explicitly supplied hostname/domain/additive-DNS draft fields to a clone, validates and renders a diff, and returns generated commands for review. Input validation has unit coverage. The verifier is not yet integrated into the preview workflow.
-- Safe apply orchestration, verification, rollback, backups, and history.
-- Interactive terminal streaming, bounded output, cancellation, and operation progress.
-- Platform packaging validation and final acceptance testing. The latest completed CI runs on the migration branch passed Linux, Windows, and macOS checks, including frontend checks/builds, Rust formatting/workspace/tests, icon generation, and Tauri desktop builds. Continue requiring green checks on each new branch head.
-
-The current increment is a functional connection/profile foundation, not feature parity. Do not report the migration complete until the acceptance criteria and corresponding integration tests pass.
-
-## System inspection view
-
-The Svelte workspace includes a dedicated read-only System view. It presents the hostname,
-domain name, configured IPv4/IPv6 name servers, and sanitized parser diagnostics from the
-running-configuration snapshot. It reuses the existing `get_device_configuration` command;
-no new device command or configuration-write path is introduced. Secret-bearing line
-configuration remains excluded from frontend serialization.
-
-## Legacy Slint workflow audit
-
-The retained Slint controller exposes edit and write methods for interfaces, VLANs, static
-routes, ACLs, DHCP, NAT, SSH/access, and global system settings, plus preview/apply, rollback,
-and save operations. However, the retained Slint window itself only has a functional editor
-for interfaces; VLAN, routing, ACL, DHCP, NAT, SSH, and system panels explicitly display
-“coming soon” placeholders. Its Changes, Backups/History, and Terminal entries are navigation
-items without corresponding content panels in the Slint layout. The Tauri migration now
-provides live interface/VLAN/route inspection, read-only configuration/ACL/DHCP/System/NAT/
-SSH inspection, an initial Overview dashboard, terminal request/response execution, and a
-restricted system/VLAN preview. Full editable parity, credential vault, backup/history, and
-safe apply/rollback orchestration remain outstanding. The old controller's write methods are
-not treated as a safe implementation template: permissive fallback parsing, simplified ACL
-replacement, incomplete NAT handling, and unverified backup/rollback behavior require
-independent review before any write workflow is migrated.
-
-
-## NAT and SSH/access inspection
-
-The running-configuration parser now recognizes a deliberately bounded subset of NAT and
-SSH configuration: NAT inside/outside interface markers, named IPv4 NAT pools, dynamic
-source rules using an ACL and pool (including overload), SSH version, timeout, and
-authentication-retry settings. The read-only frontend exposes these values in dedicated
-NAT and SSH & Access views, along with VTY/console login and transport-input policy.
-
-This is not a complete IOS NAT or SSH parser. Static NAT, route-map NAT, policy NAT,
-VRF-specific NAT, key material, AAA method lists, and unsupported command forms are not
-represented as parsed configuration. Unsupported NAT/SSH syntax is surfaced as sanitized
-parser diagnostics. The frontend DTO intentionally excludes line passwords and all
-secret-bearing fields; it reports configuration syntax, not live SSH reachability or
-authentication success. No configuration write path is introduced.
+Run the frontend type check and production build, Rust formatting and workspace checks/tests, and Tauri desktop builds on Linux, Windows, and macOS. A green compile alone is not sufficient: manually smoke-test launch, profile CRUD, connection/disconnection, device inspection, configuration preview, and terminal command execution against a suitable test device or simulator before release.
