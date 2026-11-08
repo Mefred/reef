@@ -22,6 +22,15 @@
     };
   }
 
+  interface DeviceWorkspace {
+    interfaces: Array<{ name: string; oper_status: string | null }>;
+    interfaceError: string | null;
+    vlans: Array<{ id: number; name: string; enabled: boolean }>;
+    vlanError: string | null;
+    staticRoutes: Array<{ prefix: string; next_hop: string; admin_distance: number | null; permanent: boolean }>;
+    routeError: string | null;
+  }
+
   interface DeviceProfile {
     id: string;
     name: string;
@@ -54,6 +63,29 @@
   let deviceIdentity = $state<DeviceIdentity | null>(null);
   let identityError = $state<string | null>(null);
   let disconnecting = $state(false);
+  let workspace = $state<DeviceWorkspace | null>(null);
+  let workspaceLoading = $state(false);
+  let workspaceRefreshError = $state<string | null>(null);
+
+  async function refreshWorkspace(deviceId: string) {
+    workspaceLoading = true;
+    workspaceRefreshError = null;
+    try {
+      workspace = await invoke<DeviceWorkspace>("inspect_device_workspace", { deviceId });
+    } catch (error) {
+      workspaceRefreshError = String(error);
+    } finally {
+      workspaceLoading = false;
+    }
+  }
+
+  $effect(() => {
+    const deviceId = connectedProfile?.id;
+    if (deviceId && ["Interfaces", "VLANs", "Routing"].includes(activeSection)) {
+      void refreshWorkspace(deviceId);
+    }
+  });
+
 
   const navigation = [
     { label: "Overview", icon: "⌂" },
@@ -479,6 +511,90 @@
             <h2>Connect a device first</h2>
             <p>The terminal becomes available after a device session is established.</p>
             <button class="primary-button" onclick={() => (activeSection = "Connections")}>Open connections</button>
+          </div>
+        {/if}
+      {:else if ["Interfaces", "VLANs", "Routing"].includes(activeSection)}
+        <div class="workspace-toolbar">
+          <div>
+            <h2>{connectedProfile ? connectedProfile.name : "No active device"}</h2>
+            <p>Live operational data queried from the connected device.</p>
+          </div>
+          {#if connectedProfile}
+            <button class="secondary-button" onclick={() => void refreshWorkspace(connectedProfile!.id)} disabled={workspaceLoading}>
+              {workspaceLoading ? "Refreshing…" : "Refresh data"}
+            </button>
+          {/if}
+        </div>
+        {#if !connectedProfile}
+          <div class="empty-panel">
+            <div class="welcome-icon">⌁</div>
+            <h2>Connect a device first</h2>
+            <p>Device data is available after establishing a privileged session.</p>
+            <button class="primary-button" onclick={() => (activeSection = "Connections")}>Open connections</button>
+          </div>
+        {:else if workspaceRefreshError}
+          <div class="profile-state error-state">
+            <strong>Unable to inspect device</strong>
+            <span>{workspaceRefreshError}</span>
+          </div>
+        {:else if workspaceLoading && !workspace}
+          <div class="profile-state">Querying device operational state…</div>
+        {:else if activeSection === "Interfaces"}
+          <div class="data-panel">
+            <div class="data-panel-heading">
+              <div><h2>Interfaces</h2><p>{workspace?.interfaces.length ?? 0} interfaces returned by IOS CLI</p></div>
+              <span class="coming-soon">SHOW IP INTERFACE BRIEF</span>
+            </div>
+            {#if workspace?.interfaceError}
+              <p class="section-error">{workspace.interfaceError}</p>
+            {:else if workspace?.interfaces.length}
+              <div class="table-scroll"><table class="device-table">
+                <thead><tr><th>Interface</th><th>Operational status</th></tr></thead>
+                <tbody>{#each workspace.interfaces as iface (iface.name)}
+                  <tr><td class="mono">{iface.name}</td><td><span class:state-up={iface.oper_status?.toLowerCase() === "up"} class="state-pill">{iface.oper_status || "Unknown"}</span></td></tr>
+                {/each}</tbody>
+              </table></div>
+            {:else}
+              <div class="profile-state">No interface rows were recognized in the device output.</div>
+            {/if}
+          </div>
+        {:else if activeSection === "VLANs"}
+          <div class="data-panel">
+            <div class="data-panel-heading">
+              <div><h2>VLANs</h2><p>{workspace?.vlans.length ?? 0} VLANs returned by IOS CLI</p></div>
+              <span class="coming-soon">SHOW VLAN BRIEF</span>
+            </div>
+            {#if workspace?.vlanError}
+              <p class="section-error">{workspace.vlanError}</p>
+            {:else if workspace?.vlans.length}
+              <div class="table-scroll"><table class="device-table">
+                <thead><tr><th>VLAN ID</th><th>Name</th><th>Status</th></tr></thead>
+                <tbody>{#each workspace.vlans as vlan (vlan.id)}
+                  <tr><td class="mono">{vlan.id}</td><td>{vlan.name}</td><td><span class="state-pill state-up">Active</span></td></tr>
+                {/each}</tbody>
+              </table></div>
+            {:else}
+              <div class="profile-state">No VLANs were recognized. This command may not be supported on this device.</div>
+            {/if}
+          </div>
+        {:else}
+          <div class="data-panel">
+            <div class="data-panel-heading">
+              <div><h2>Static routes</h2><p>{workspace?.staticRoutes.length ?? 0} static routes parsed from the routing table</p></div>
+              <span class="coming-soon">SHOW IP ROUTE</span>
+            </div>
+            {#if workspace?.routeError}
+              <p class="section-error">{workspace.routeError}</p>
+            {:else if workspace?.staticRoutes.length}
+              <div class="table-scroll"><table class="device-table">
+                <thead><tr><th>Destination</th><th>Next hop</th><th>Administrative distance</th></tr></thead>
+                <tbody>{#each workspace.staticRoutes as route, index (route.prefix + '-' + index)}
+                  <tr><td class="mono">{route.prefix}</td><td class="mono">{route.next_hop}</td><td>{route.admin_distance ?? "Default"}</td></tr>
+                {/each}</tbody>
+              </table></div>
+            {:else}
+              <div class="profile-state">No static routes were recognized. Connected and dynamic routes are not shown in this initial view.</div>
+            {/if}
           </div>
         {/if}
       {:else}
