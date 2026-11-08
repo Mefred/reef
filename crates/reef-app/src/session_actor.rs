@@ -7,6 +7,7 @@
 use std::thread;
 
 use reef_engine::model::{DeviceIdentity, InterfaceRef, StaticRoute, VlanConfig};
+use reef_engine::parser::parse_running_config;
 use reef_engine::parser::{parse_interfaces, parse_routes, parse_vlans};
 use reef_session::{
     ConnectionConfig, SerialTransport, SessionManager, SshTransport, TelnetTransport, TransportType,
@@ -28,6 +29,35 @@ pub struct DeviceWorkspace {
     pub vlan_error: Option<String>,
     pub static_routes: Vec<StaticRoute>,
     pub route_error: Option<String>,
+}
+
+
+/// Safe configuration summary for the frontend. Secret-bearing fields from
+/// DeviceConfig (line passwords, credentials and banners) are intentionally
+/// excluded from this transport DTO.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfigurationSnapshot {
+    pub hostname: Option<String>,
+    pub domain_name: Option<String>,
+    pub name_servers: Vec<String>,
+    pub interfaces: Vec<ConfiguredInterface>,
+    pub vlans: Vec<VlanConfig>,
+    pub static_routes: Vec<String>,
+    pub acl_names: Vec<String>,
+    pub dhcp_pool_names: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfiguredInterface {
+    pub name: String,
+    pub description: Option<String>,
+    pub enabled: bool,
+    pub mode: String,
+    pub ipv4: Option<String>,
+    pub mtu: Option<u16>,
 }
 
 enum Command {
@@ -61,6 +91,10 @@ enum Command {
     Inspect {
         device_id: String,
         reply: oneshot::Sender<Result<DeviceWorkspace, String>>,
+    },
+    GetConfiguration {
+        device_id: String,
+        reply: oneshot::Sender<Result<ConfigurationSnapshot, String>>,
     },
 }
 
@@ -152,6 +186,20 @@ impl SessionActor {
         let (reply, response) = oneshot::channel();
         self.sender
             .send(Command::Inspect { device_id, reply })
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+
+    pub async fn get_configuration(
+        &self,
+        device_id: String,
+    ) -> Result<ConfigurationSnapshot, String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::GetConfiguration { device_id, reply })
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
@@ -267,6 +315,50 @@ async fn run_actor(mut receiver: mpsc::UnboundedReceiver<Command>) {
                     static_routes,
                     route_error,
                 }));
+            }
+
+            Command::GetConfiguration { device_id, reply } => {
+                let result = manager
+                    .send_command(&device_id, "show running-config")
+                    .await
+                    .map_err(|error| error.to_string())
+                    .map(|output| {
+                        let parsed = parse_running_config(&output);
+                        let config = parsed.model;
+                        ConfigurationSnapshot {
+                            hostname: config.hostname,
+                            domain_name: config.ip_domain_name,
+                            name_servers: config.ip_name_server,
+                            interfaces: config
+                                .interfaces
+                                .into_values()
+                                .map(|interface| ConfiguredInterface {
+                                    name: interface.name,
+                                    description: interface.description,
+                                    enabled: interface.enabled,
+                                    mode: format!("{:?}", interface.mode),
+                                    ipv4: interface.ipv4.map(|address| {
+                                        format!("{}/{}", address.address, address.prefix_len)
+                                    }),
+                                    mtu: interface.mtu,
+                                })
+                                .collect(),
+                            vlans: config.vlans.into_values().collect(),
+                            static_routes: config
+                                .ip_routes
+                                .iter()
+                                .map(|route| format!("{} via {}", route.prefix, route.next_hop))
+                                .collect(),
+                            acl_names: config.acls.into_keys().collect(),
+                            dhcp_pool_names: config.dhcp_pools.into_keys().collect(),
+                            warnings: parsed
+                                .warnings
+                                .into_iter()
+                                .map(|warning| format!("{}: {}", warning.raw, warning.reason))
+                                .collect(),
+                        }
+                    });
+                let _ = reply.send(result);
             }
             Command::Enable {
                 device_id,
