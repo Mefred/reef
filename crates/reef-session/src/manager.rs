@@ -262,6 +262,23 @@ impl SessionManager {
         guard.save_config().await
     }
 
+    /// Disconnect every registered session during application shutdown.
+    ///
+    /// Returns failures individually so one broken transport does not prevent
+    /// the remaining sessions from receiving a disconnect attempt.
+    pub async fn disconnect_all(&self) -> Vec<(String, Error)> {
+        let device_ids = self.sessions.keys().cloned().collect::<Vec<_>>();
+        let mut failures = Vec::new();
+
+        for device_id in device_ids {
+            if let Err(error) = self.disconnect(&device_id).await {
+                failures.push((device_id, error));
+            }
+        }
+
+        failures
+    }
+
     /// Check if a device session is connected.
     pub async fn is_connected(&self, device_id: &str) -> Result<bool, Error> {
         let session = self
