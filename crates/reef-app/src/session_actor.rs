@@ -372,9 +372,10 @@ impl SessionActor {
     pub async fn shutdown(&self) -> Result<(), String> {
         let (reply, response) = oneshot::channel();
         let response_result = match self.sender.send(Command::Shutdown { reply }).await {
-            Ok(()) => response
-                .await
-                .map_err(|_| "session actor stopped before shutdown completed".to_string())?,
+            Ok(()) => match response.await {
+                Ok(result) => result,
+                Err(_) => Err("session actor stopped before shutdown completed".to_string()),
+            },
             Err(_) => Err("session actor is unavailable".to_string()),
         };
 
