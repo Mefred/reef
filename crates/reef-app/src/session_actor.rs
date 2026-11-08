@@ -31,7 +31,6 @@ pub struct DeviceWorkspace {
     pub route_error: Option<String>,
 }
 
-
 /// Safe configuration summary for the frontend. Secret-bearing fields from
 /// DeviceConfig (line passwords, credentials and banners) are intentionally
 /// excluded from this transport DTO.
@@ -191,7 +190,6 @@ impl SessionActor {
             .await
             .map_err(|_| "session actor stopped before replying".to_string())?
     }
-
 
     pub async fn get_configuration(
         &self,
