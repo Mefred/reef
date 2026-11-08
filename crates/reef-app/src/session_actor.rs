@@ -787,6 +787,23 @@ mod tests {
         assert_send_sync::<SessionActor>();
     }
 
+    #[tokio::test]
+    async fn actor_remains_available_after_a_device_operation_error() {
+        let actor = SessionActor::start().expect("actor should start");
+
+        let command_error = actor
+            .send_command("missing-device".to_string(), "show version".to_string())
+            .await
+            .expect_err("unknown device command should fail");
+        assert!(command_error.contains("missing-device"));
+
+        let connection_error = actor
+            .is_connected("missing-device".to_string())
+            .await
+            .expect_err("unknown device status should fail");
+        assert!(connection_error.contains("missing-device"));
+    }
+
     #[test]
     fn configuration_snapshot_sections_are_sorted_deterministically() {
         let mut snapshot = super::ConfigurationSnapshot {
