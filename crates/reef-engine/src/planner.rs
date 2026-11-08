@@ -321,11 +321,7 @@ mod tests {
             .iter()
             .map(|(name, _, _)| name.as_str())
             .collect();
-        let vlan_ids: Vec<_> = changes
-            .vlan_changes
-            .iter()
-            .map(|(id, _)| *id)
-            .collect();
+        let vlan_ids: Vec<_> = changes.vlan_changes.iter().map(|(id, _)| *id).collect();
 
         assert_eq!(
             interface_names,
