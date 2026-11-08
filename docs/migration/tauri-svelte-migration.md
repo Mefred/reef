@@ -130,14 +130,14 @@ Implemented in the migration branch:
 
 Still pending:
 
-- Full Slint screen/controller audit and extraction of all domain workflows.
+- Complete domain-workflow extraction and feature-parity audit. The retained Slint screen has placeholder-only VLAN, routing, ACL, DHCP, NAT, SSH, and system panels; its controller contains legacy edit/apply methods that require independent safety review before migration.
 - Credential vault integration using each platform's native secure storage.
-- Parsed device identity and an overview dashboard showing chassis/processor details, discovered interface state counts, and detected platform capabilities.
+- Parsed device identity and an overview dashboard showing chassis/processor details, discovered interface state counts, and detected platform capabilities. The live VLAN inspection view also reflects the parsed enabled/suspended state rather than assuming every VLAN is active.
 - ACL, DHCP, NAT, system, and full interface/VLAN/route configuration editing. The current operational and running-configuration views are read-only.
 - Expand the typed, read-only planner preview beyond its initial system-settings scope. The current Tauri command reads the running configuration in the actor, applies only explicitly supplied hostname/domain/additive-DNS draft fields to a clone, validates and renders a diff, and returns generated commands for review. Input validation has unit coverage. The verifier is not yet integrated into the preview workflow.
 - Safe apply orchestration, verification, rollback, backups, and history.
 - Interactive terminal streaming, bounded output, cancellation, and operation progress.
-- Green CI on the latest branch head and platform packaging validation. The source icon is now a 512×512 RGBA PNG. Cross-platform runs on an earlier head have passed Windows workspace checks, tests, and icon generation; current-head Linux, Windows, and macOS checks/builds remain in progress.
+- Platform packaging validation and final acceptance testing. The latest completed CI runs on the migration branch passed Linux, Windows, and macOS checks, including frontend checks/builds, Rust formatting/workspace/tests, icon generation, and Tauri desktop builds. Continue requiring green checks on each new branch head.
 
 The current increment is a functional connection/profile foundation, not feature parity. Do not report the migration complete until the acceptance criteria and corresponding integration tests pass.
 
@@ -151,15 +151,19 @@ configuration remains excluded from frontend serialization.
 
 ## Legacy Slint workflow audit
 
-The retained Slint controller exposes additional configuration workflows for interfaces,
-VLANs, static routes, ACLs, DHCP, NAT, SSH/access, and global system settings, plus
-configuration preview/apply, rollback, and save operations. The Tauri migration currently
-covers live interface/VLAN/route inspection, read-only configuration/ACL/DHCP/System
-inspection, and a restricted system/VLAN preview. NAT and SSH/access inspection, editable
-configuration parity, backup/history, and apply/rollback orchestration remain outstanding.
-The old controller's apply/rollback implementation is not treated as a safe implementation
-template: its backup and save behavior, failure handling, and verification boundaries need
-a separate safety review before any write workflow is migrated.
+The retained Slint controller exposes edit and write methods for interfaces, VLANs, static
+routes, ACLs, DHCP, NAT, SSH/access, and global system settings, plus preview/apply, rollback,
+and save operations. However, the retained Slint window itself only has a functional editor
+for interfaces; VLAN, routing, ACL, DHCP, NAT, SSH, and system panels explicitly display
+“coming soon” placeholders. Its Changes, Backups/History, and Terminal entries are navigation
+items without corresponding content panels in the Slint layout. The Tauri migration now
+provides live interface/VLAN/route inspection, read-only configuration/ACL/DHCP/System/NAT/
+SSH inspection, an initial Overview dashboard, terminal request/response execution, and a
+restricted system/VLAN preview. Full editable parity, credential vault, backup/history, and
+safe apply/rollback orchestration remain outstanding. The old controller's write methods are
+not treated as a safe implementation template: permissive fallback parsing, simplified ACL
+replacement, incomplete NAT handling, and unverified backup/rollback behavior require
+independent review before any write workflow is migrated.
 
 
 ## NAT and SSH/access inspection
