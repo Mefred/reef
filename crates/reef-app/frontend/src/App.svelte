@@ -38,8 +38,8 @@
     interfaces: Array<{ name: string; description: string | null; enabled: boolean; mode: string; ipv4: string | null; mtu: number | null }>;
     vlans: Array<{ id: number; name: string; enabled: boolean }>;
     staticRoutes: string[];
-    aclNames: string[];
-    dhcpPoolNames: string[];
+    acls: Array<{ name: string; aclType: string; rules: string[] }>;
+    dhcpPools: Array<{ name: string; network: string; defaultRouter: string | null; dnsServers: string[] }>;
     warnings: string[];
   }
 
@@ -688,9 +688,30 @@
           <div class="data-panel config-section">
             <div class="data-panel-heading"><div><h2>Other configuration</h2><p>Recognized feature blocks</p></div></div>
             <div class="config-feature-list">
-              <span>{configuration.aclNames.length} ACLs: {configuration.aclNames.join(", ") || "None"}</span>
-              <span>{configuration.dhcpPoolNames.length} DHCP pools: {configuration.dhcpPoolNames.join(", ") || "None"}</span>
               <span>Name servers: {configuration.nameServers.join(", ") || "None"}</span>
+              <span>{configuration.acls.length} ACLs · {configuration.acls.reduce((total, acl) => total + acl.rules.length, 0)} parsed rules</span>
+              <span>{configuration.dhcpPools.length} DHCP pools</span>
+            </div>
+          </div>
+          <div class="config-columns">
+            <div class="data-panel config-section">
+              <div class="data-panel-heading"><div><h2>Access control lists</h2><p>Parsed ACL entries; unsupported syntax is reported below</p></div></div>
+              {#each configuration.acls as acl (acl.name)}
+                <div class="config-list-row"><strong>{acl.name}</strong><span>{acl.aclType} · {acl.rules.length} rules</span></div>
+                {#each acl.rules as rule, index (index)}
+                  <div class="config-feature-list"><span class="mono">{rule}</span></div>
+                {/each}
+              {:else}<p class="config-empty">No ACLs parsed.</p>{/each}
+            </div>
+            <div class="data-panel config-section">
+              <div class="data-panel-heading"><div><h2>DHCP pools</h2><p>{configuration.dhcpPools.length} configured pools</p></div></div>
+              {#each configuration.dhcpPools as pool (pool.name)}
+                <div class="config-list-row"><strong>{pool.name}</strong><span class="mono">{pool.network}</span></div>
+                <div class="config-feature-list">
+                  <span>Default router: {pool.defaultRouter || "Not configured"}</span>
+                  <span>DNS: {pool.dnsServers.join(", ") || "Not configured"}</span>
+                </div>
+              {:else}<p class="config-empty">No DHCP pools parsed.</p>{/each}
             </div>
           </div>
           {#if configuration.warnings.length}
