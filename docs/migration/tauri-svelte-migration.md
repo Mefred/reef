@@ -160,3 +160,19 @@ configuration parity, backup/history, and apply/rollback orchestration remain ou
 The old controller's apply/rollback implementation is not treated as a safe implementation
 template: its backup and save behavior, failure handling, and verification boundaries need
 a separate safety review before any write workflow is migrated.
+
+
+## NAT and SSH/access inspection
+
+The running-configuration parser now recognizes a deliberately bounded subset of NAT and
+SSH configuration: NAT inside/outside interface markers, named IPv4 NAT pools, dynamic
+source rules using an ACL and pool (including overload), SSH version, timeout, and
+authentication-retry settings. The read-only frontend exposes these values in dedicated
+NAT and SSH & Access views, along with VTY/console login and transport-input policy.
+
+This is not a complete IOS NAT or SSH parser. Static NAT, route-map NAT, policy NAT,
+VRF-specific NAT, key material, AAA method lists, and unsupported command forms are not
+represented as parsed configuration. Unsupported NAT/SSH syntax is surfaced as sanitized
+parser diagnostics. The frontend DTO intentionally excludes line passwords and all
+secret-bearing fields; it reports configuration syntax, not live SSH reachability or
+authentication success. No configuration write path is introduced.
