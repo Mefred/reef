@@ -42,3 +42,9 @@ pnpm tauri:build
 ```
 
 The current migration increment provides the desktop shell and saved-profile read path. Device connections and the remaining device-management workflows are not yet wired into the new frontend.
+
+## Migration status
+
+The Tauri/Svelte frontend is being introduced in stages. The current migration includes saved connection profiles, SSH/Telnet/serial session commands, device identification, and an initial xterm.js command console. Interface/VLAN/routing/configuration views and terminal streaming are not yet at Slint feature parity.
+
+The `pnpm tauri:build` script generates the platform-specific icon variants from `icons/icon.png` before packaging.
