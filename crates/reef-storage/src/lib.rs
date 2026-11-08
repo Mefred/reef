@@ -286,6 +286,36 @@ mod tests {
     }
 
     #[test]
+    fn json_records_are_replaced_atomically() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after epoch")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "reef-storage-atomic-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).expect("create test directory");
+        let path = directory.join("record.json");
+
+        write_json_atomic(&path, br#"{ "value": 1 }"#).expect("write initial record");
+        write_json_atomic(&path, br#"{ "value": 2 }"#).expect("replace record");
+
+        assert_eq!(
+            fs::read_to_string(&path).expect("read record"),
+            r#"{ "value": 2 }"#
+        );
+        let leftovers = fs::read_dir(&directory)
+            .expect("read test directory")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
+            .count();
+        assert_eq!(leftovers, 0);
+
+        fs::remove_dir_all(directory).expect("remove test directory");
+    }
+
+    #[test]
     fn storage_open_creates_dirs() {
         let s = Storage::open().expect("storage should open");
         assert!(s.data_dir.join("backups").is_dir());
