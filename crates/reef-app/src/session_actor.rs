@@ -254,7 +254,11 @@ impl SessionActor {
     ) -> Result<ConfigurationPreview, String> {
         let (reply, response) = oneshot::channel();
         self.sender
-            .send(Command::PreviewConfiguration { device_id, draft, reply })
+            .send(Command::PreviewConfiguration {
+                device_id,
+                draft,
+                reply,
+            })
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
             .await
