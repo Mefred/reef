@@ -38,13 +38,46 @@
 
     terminal.writeln("Reef device terminal");
     terminal.writeln("Commands are executed through the active Rust session.");
+    terminal.writeln("Pasted commands run sequentially; Ctrl+C clears the input line.");
     terminal.write("$ ");
 
+    const maxCommandLength = 4096;
+    const maxQueuedCommands = 32;
     let buffer = "";
-    let busy = false;
+    let queue: string[] = [];
+    let processing = false;
+    let disposed = false;
 
-    const input = terminal.onData(async (data) => {
-      if (busy) return;
+    async function processQueue() {
+      if (processing || disposed) return;
+      processing = true;
+      try {
+        while (queue.length > 0 && !disposed) {
+          const command = queue.shift();
+          if (!command) continue;
+          try {
+            const output = await invoke<string>("send_device_command", {
+              deviceId,
+              command,
+            });
+            if (disposed) return;
+            if (output) {
+              terminal.write(output.replace(/\r?\n/g, "\r\n"));
+              if (!output.endsWith("\n")) terminal.write("\r\n");
+            }
+          } catch (error) {
+            if (disposed) return;
+            terminal.write(`\x1b[31m${String(error)}\x1b[0m\r\n`);
+          }
+          if (!disposed) terminal.write("$ ");
+        }
+      } finally {
+        processing = false;
+      }
+    }
+
+    const input = terminal.onData((data) => {
+      if (disposed) return;
 
       for (const character of data) {
         if (character === "\r" || character === "\n") {
@@ -52,26 +85,15 @@
           const command = buffer.trim();
           buffer = "";
           if (!command) {
-            terminal.write("$ ");
+            if (!processing && queue.length === 0) terminal.write("$ ");
             continue;
           }
-
-          busy = true;
-          try {
-            const output = await invoke<string>("send_device_command", {
-              deviceId,
-              command,
-            });
-            if (output) {
-              terminal.write(output.replace(/\r?\n/g, "\r\n"));
-              if (!output.endsWith("\n")) terminal.write("\r\n");
-            }
-          } catch (error) {
-            terminal.write(`\x1b[31m${String(error)}\x1b[0m\r\n`);
-          } finally {
-            busy = false;
-            terminal.write("$ ");
+          if (queue.length >= maxQueuedCommands) {
+            terminal.write(`\x1b[31mCommand queue full (maximum ${maxQueuedCommands}).\x1b[0m\r\n$ `);
+            continue;
           }
+          queue.push(command);
+          void processQueue();
         } else if (character === "\u007f" || character === "\b") {
           if (buffer.length > 0) {
             buffer = buffer.slice(0, -1);
@@ -79,8 +101,15 @@
           }
         } else if (character === "\u0003") {
           buffer = "";
-          terminal.write("^C\r\n$ ");
+          terminal.write("^C\r\n");
+          if (!processing && queue.length === 0) terminal.write("$ ");
         } else if (character >= " " && character !== "\u007f") {
+          if (buffer.length >= maxCommandLength) {
+            terminal.write("\r\n\x1b[31mCommand too long (maximum 4096 characters).\x1b[0m\r\n");
+            buffer = "";
+            terminal.write("$ ");
+            continue;
+          }
           buffer += character;
           terminal.write(character);
         }
@@ -91,6 +120,8 @@
     observer.observe(terminalHost);
 
     return () => {
+      disposed = true;
+      queue = [];
       input.dispose();
       observer.disconnect();
       terminal.dispose();
