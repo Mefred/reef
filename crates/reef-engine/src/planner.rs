@@ -83,13 +83,12 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
     cs.ip_domain_name = desired.ip_domain_name.clone();
     cs.ip_name_servers = desired.ip_name_server.clone();
 
-    if current.hostname != desired.hostname {
-        cs.system.push(ChangeOp::Modify);
-    }
-    if current.ip_domain_name != desired.ip_domain_name {
-        cs.system.push(ChangeOp::Modify);
-    }
-    if current.ip_name_server != desired.ip_name_server {
+    if current.hostname != desired.hostname
+        || current.ip_domain_name != desired.ip_domain_name
+        || current.ip_name_server != desired.ip_name_server
+    {
+        // The generator emits the complete desired system block for one
+        // operation, so represent any number of field changes as one op.
         cs.system.push(ChangeOp::Modify);
     }
 
@@ -328,6 +327,25 @@ mod tests {
             vec!["GigabitEthernet1/0/1", "GigabitEthernet1/0/2"]
         );
         assert_eq!(vlan_ids, vec![10, 20]);
+    }
+
+    #[test]
+    fn plan_groups_system_setting_changes_into_one_operation() {
+        let mut current = DeviceConfig::default();
+        current.hostname = Some("old-router".to_string());
+        current.ip_domain_name = Some("old.example".to_string());
+
+        let mut desired = DeviceConfig::default();
+        desired.hostname = Some("new-router".to_string());
+        desired.ip_domain_name = Some("new.example".to_string());
+        desired.ip_name_server = vec!["192.0.2.53".to_string()];
+
+        let changes = plan(&current, &desired);
+
+        assert_eq!(changes.system, vec![ChangeOp::Modify]);
+        assert_eq!(changes.hostname.as_deref(), Some("new-router"));
+        assert_eq!(changes.ip_domain_name.as_deref(), Some("new.example"));
+        assert_eq!(changes.ip_name_servers, vec!["192.0.2.53"]);
     }
 
     #[test]
