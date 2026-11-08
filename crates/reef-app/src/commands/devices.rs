@@ -112,6 +112,14 @@ pub async fn identify_device(
 }
 
 #[tauri::command]
+pub async fn inspect_device_workspace(
+    actor: State<'_, SessionActor>,
+    device_id: String,
+) -> Result<crate::session_actor::DeviceWorkspace, String> {
+    actor.inspect(device_id).await
+}
+
+#[tauri::command]
 pub async fn enable_device(
     actor: State<'_, SessionActor>,
     device_id: String,
