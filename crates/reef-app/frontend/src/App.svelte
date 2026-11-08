@@ -40,6 +40,14 @@
     staticRoutes: string[];
     acls: Array<{ name: string; aclType: string; rules: string[] }>;
     dhcpPools: Array<{ name: string; network: string; defaultRouter: string | null; dnsServers: string[] }>;
+    nat: {
+      insideInterfaces: string[];
+      outsideInterfaces: string[];
+      pools: Array<{ name: string; start: string; end: string; netmask: string }>;
+      rules: Array<{ name: string; sourceAcl: string | null; pool: string | null; overload: boolean }>;
+    } | null;
+    ssh: { enabled: boolean; version: string; timeout: number | null; authenticationRetries: number | null } | null;
+    lineAccess: Array<{ line: string; loginRequired: boolean; transport: string[] }>;
     warnings: string[];
   }
 
@@ -151,7 +159,7 @@
     if (deviceId && ["Interfaces", "VLANs", "Routing"].includes(activeSection)) {
       void refreshWorkspace(deviceId);
     }
-    if (deviceId && ["Configuration", "Access Lists", "DHCP", "System"].includes(activeSection)) {
+    if (deviceId && ["Configuration", "Access Lists", "DHCP", "System", "NAT", "SSH & Access"].includes(activeSection)) {
       void refreshConfiguration(deviceId);
     }
   });
@@ -166,6 +174,8 @@
     { label: "Access Lists", icon: "▦" },
     { label: "DHCP", icon: "⇥" },
     { label: "System", icon: "⚙" },
+    { label: "NAT", icon: "⇄" },
+    { label: "SSH & Access", icon: "⌑" },
     { label: "Terminal", icon: ">_" },
   ];
 
@@ -845,6 +855,90 @@
             </div>
           {/if}
           <p class="security-note">Read-only inspection. Credentials, line passwords, and other secret-bearing fields are not exposed in this view.</p>
+        {/if}
+      {:else if activeSection === "NAT" || activeSection === "SSH & Access"}
+        <div class="workspace-toolbar">
+          <div>
+            <h2>{activeSection === "NAT" ? "Network address translation" : "SSH and line access"}</h2>
+            <p>Read-only security and edge-network settings parsed from running configuration. Passwords and key material are never serialized.</p>
+          </div>
+          {#if connectedProfile}
+            <button class="secondary-button" onclick={() => void refreshConfiguration(connectedProfile!.id)} disabled={configurationLoading}>
+              {configurationLoading ? "Refreshing…" : "Refresh configuration"}
+            </button>
+          {/if}
+        </div>
+        {#if !connectedProfile}
+          <div class="empty-panel">
+            <div class="welcome-icon">⌁</div>
+            <h2>Connect a device first</h2>
+            <p>{activeSection} inspection requires an active device session.</p>
+            <button class="primary-button" onclick={() => (activeSection = "Connections")}>Open connections</button>
+          </div>
+        {:else if configurationError}
+          <div class="profile-state error-state"><strong>Unable to retrieve configuration</strong><span>{configurationError}</span></div>
+        {:else if configurationLoading && !configuration}
+          <div class="profile-state">Retrieving and parsing running configuration…</div>
+        {:else if configuration}
+          {#if activeSection === "NAT"}
+            {#if configuration.nat}
+              <div class="config-summary-grid">
+                <article class="config-summary-card"><span>INSIDE INTERFACES</span><strong>{configuration.nat.insideInterfaces.length}</strong></article>
+                <article class="config-summary-card"><span>OUTSIDE INTERFACES</span><strong>{configuration.nat.outsideInterfaces.length}</strong></article>
+                <article class="config-summary-card"><span>ADDRESS POOLS</span><strong>{configuration.nat.pools.length}</strong></article>
+                <article class="config-summary-card"><span>SOURCE RULES</span><strong>{configuration.nat.rules.length}</strong></article>
+              </div>
+              <div class="config-columns">
+                <div class="data-panel config-section">
+                  <div class="data-panel-heading"><div><h2>Inside interfaces</h2><p>Interfaces marked for NAT translation</p></div></div>
+                  {#each configuration.nat.insideInterfaces as name (name)}
+                    <div class="config-list-row"><span class="mono">{name}</span></div>
+                  {:else}<p class="config-empty">No inside interfaces parsed.</p>{/each}
+                </div>
+                <div class="data-panel config-section">
+                  <div class="data-panel-heading"><div><h2>Outside interfaces</h2><p>Interfaces facing translated networks</p></div></div>
+                  {#each configuration.nat.outsideInterfaces as name (name)}
+                    <div class="config-list-row"><span class="mono">{name}</span></div>
+                  {:else}<p class="config-empty">No outside interfaces parsed.</p>{/each}
+                </div>
+              </div>
+              <div class="data-panel config-section">
+                <div class="data-panel-heading"><div><h2>NAT pools</h2><p>Configured public address ranges</p></div></div>
+                {#each configuration.nat.pools as pool (pool.name)}
+                  <div class="config-list-row"><strong>{pool.name}</strong><span class="mono">{pool.start} – {pool.end}</span><span class="mono">Mask {pool.netmask}</span></div>
+                {:else}<p class="config-empty">No NAT pools parsed.</p>{/each}
+              </div>
+              <div class="data-panel config-section">
+                <div class="data-panel-heading"><div><h2>Translation rules</h2><p>Parsed dynamic source NAT rules</p></div></div>
+                {#each configuration.nat.rules as rule (rule.name)}
+                  <div class="config-list-row"><strong>{rule.name}</strong><span>ACL {rule.sourceAcl || "—"}</span><span>Pool {rule.pool || "—"}</span><span>{rule.overload ? "PAT / overload" : "No overload"}</span></div>
+                {:else}<p class="config-empty">No supported dynamic NAT rules parsed.</p>{/each}
+              </div>
+            {:else}
+              <div class="profile-state">No supported NAT configuration was recognized. Static NAT, route-map NAT, and other unsupported forms are not inferred.</div>
+            {/if}
+          {:else}
+            <div class="config-summary-grid">
+              <article class="config-summary-card"><span>SSH CONFIGURATION</span><strong>{configuration.ssh ? (configuration.ssh.enabled ? "Enabled" : "Disabled") : "Not parsed"}</strong></article>
+              <article class="config-summary-card"><span>SSH VERSION</span><strong>{configuration.ssh?.version || "Unknown"}</strong></article>
+              <article class="config-summary-card"><span>SSH TIMEOUT</span><strong>{configuration.ssh?.timeout != null ? configuration.ssh.timeout + "s" : "Default / unknown"}</strong></article>
+              <article class="config-summary-card"><span>AUTH RETRIES</span><strong>{configuration.ssh?.authenticationRetries ?? "Default / unknown"}</strong></article>
+            </div>
+            <div class="data-panel config-section">
+              <div class="data-panel-heading"><div><h2>Line access policy</h2><p>Console and VTY transport/login settings; no passwords or secrets are displayed</p></div></div>
+              {#each configuration.lineAccess as line (line.line)}
+                <div class="config-list-row"><strong class="mono">{line.line}</strong><span>{line.loginRequired ? "Login required" : "Login not required / unknown"}</span><span>Transport: {line.transport.join(", ") || "Not configured"}</span></div>
+              {:else}<p class="config-empty">No line access configuration parsed.</p>{/each}
+            </div>
+            <p class="security-note">This view reports configuration syntax only. It does not verify that SSH is reachable, that keys exist, or that AAA authentication succeeds.</p>
+          {/if}
+          {#if configuration.warnings.length}
+            <div class="data-panel config-section">
+              <div class="data-panel-heading"><div><h2>Parser diagnostics</h2><p>Unsupported configuration forms are not shown as if they were understood</p></div></div>
+              <div class="config-warnings">{#each configuration.warnings as warning, index (index)}<p>{warning}</p>{/each}</div>
+            </div>
+          {/if}
+          <p class="security-note">Read-only inspection. No configuration commands are sent to the device.</p>
         {/if}
       {:else if activeSection === "Access Lists" || activeSection === "DHCP"}
         <div class="workspace-toolbar">
