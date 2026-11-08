@@ -496,7 +496,10 @@ fn parse_line_sub(trimmed: &str, name: &str, config: &mut DeviceConfig) -> Optio
         line.password = Some(Secret(trimmed["password ".len()..].trim().to_string()));
         return None;
     }
-    if trimmed == "login" {
+    if trimmed == "login"
+        || trimmed == "login local"
+        || trimmed.starts_with("login authentication ")
+    {
         line.login = true;
         return None;
     }
@@ -877,6 +880,7 @@ interface GigabitEthernet0/0/1
  ip nat outside
 line vty 0 4
  password super-secret
+ login local
  transport input ssh
 "#;
         let parsed = parse_running_config(output);
@@ -893,6 +897,7 @@ line vty 0 4
         assert!(nat.rules[0].overload);
         let line = parsed.model.line_configs.get("vty 0 4").unwrap();
         assert!(line.password.is_some());
+        assert!(line.login);
         assert!(line.transport.contains(&crate::model::Transport::Ssh));
     }
 
