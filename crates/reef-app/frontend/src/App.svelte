@@ -181,6 +181,10 @@
         await invoke("disconnect_device", { deviceId: connectedProfile.id });
         connectedProfile = null;
         deviceIdentity = null;
+        workspace = null;
+        workspaceRefreshError = null;
+        configuration = null;
+        configurationError = null;
         identityError = null;
       }
       await invoke("connect_device", {
@@ -263,6 +267,8 @@
       deviceIdentity = null;
       workspace = null;
       workspaceRefreshError = null;
+      configuration = null;
+      configurationError = null;
       identityError = null;
     } catch (error) {
       connectionError = String(error);
