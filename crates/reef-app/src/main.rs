@@ -17,7 +17,7 @@ mod ui;
 
 use std::sync::Arc;
 
-use app::ReefApp;
+use app::{DismissModal, ReefApp};
 use diagnostics::AppDiagnostics;
 use reef_logging::init;
 use reef_storage::Storage;
@@ -89,7 +89,19 @@ fn main() {
             },
             move |_window, cx| {
                 let view = cx.new(|cx| ReefApp::new(session, storage, diagnostics, cx));
+                let weak = view.downgrade();
+                let weak_for_action = weak.clone();
                 view.update(cx, |app, cx| app.bootstrap(cx));
+                cx.on_action(move |_: &DismissModal, _cx| {
+                    let weak = weak_for_action.clone();
+                    _cx.defer(move |cx| {
+                        weak.update(cx, |this, cx| {
+                            this.dismiss_modal();
+                            cx.notify();
+                        })
+                        .ok();
+                    });
+                });
                 view
             },
         );

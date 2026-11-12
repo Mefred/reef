@@ -4,7 +4,6 @@
 //! `Storage`, and `AppDiagnostics`. There is no webview, JavaScript bridge, or
 //! Tauri command boundary in this process.
 
-use std::any::TypeId;
 use std::sync::Arc;
 
 use reef_engine::model::DeviceIdentity;
@@ -16,8 +15,8 @@ use reef_storage::{
 };
 use wgpui::{
     actions, div, prelude::*, px, AnyElement, App, ClipboardItem, Context, ElementId, Entity,
-    FocusHandle, FontWeight, Hsla, InteractiveElement, MouseButton, MouseDownEvent, Render,
-    ScrollHandle, SharedString, WeakEntity, Window,
+    FontWeight, Hsla, InteractiveElement, MouseButton, MouseDownEvent, Render, ScrollHandle,
+    SharedString, WeakEntity, Window,
 };
 
 use crate::diagnostics::{
@@ -578,9 +577,8 @@ pub struct ReefApp {
     modal: Option<Modal>,
     pending_modal: Option<Modal>,
     modal_error: Option<String>,
+    modal_dirty: bool,
     open_select: Option<SelectField>,
-    modal_focus: FocusHandle,
-    escape_bound: bool,
     pending_restore: Option<String>,
     show_details: bool,
     terminal: TerminalState,
@@ -619,9 +617,8 @@ impl ReefApp {
             modal: None,
             pending_modal: None,
             modal_error: None,
+            modal_dirty: false,
             open_select: None,
-            modal_focus: cx.focus_handle(),
-            escape_bound: false,
             pending_restore: None,
             show_details: false,
             terminal: TerminalState::new(cx),
@@ -796,8 +793,8 @@ impl ReefApp {
 
     /// Close the current dialog unless it contains unsaved input. In that case
     /// replace it with a confirmation dialog that can restore the form.
-    fn request_modal_close(&mut self, cx: &mut Context<Self>) {
-        if self.modal_is_dirty(cx) {
+    fn request_modal_close(&mut self) {
+        if self.modal_dirty {
             if let Some(modal) = self.modal.take() {
                 self.pending_modal = Some(modal);
             }
@@ -807,25 +804,36 @@ impl ReefApp {
         } else {
             self.close_modal();
         }
-        cx.notify();
     }
 
-    fn discard_modal(&mut self, cx: &mut Context<Self>) {
+    fn discard_modal(&mut self) {
         self.close_modal();
         self.connection = None;
         self.interface_edit = None;
         self.vlan_edit = None;
         self.route_edit = None;
-        cx.notify();
     }
 
-    fn resume_modal(&mut self, cx: &mut Context<Self>) {
+    fn resume_modal(&mut self) {
         if let Some(modal) = self.pending_modal.take() {
             self.modal = Some(modal);
         } else {
             self.modal = None;
         }
-        cx.notify();
+    }
+
+    pub(crate) fn dismiss_modal(&mut self) {
+        match self.modal.clone() {
+            None => {}
+            Some(Modal::ConfirmDiscard) => self.resume_modal(),
+            Some(Modal::ConfirmApply) | Some(Modal::ConfirmRestore) => {
+                self.pending_restore = None;
+                self.close_modal();
+            }
+            Some(Modal::Connection)
+                if self.connection.as_ref().is_some_and(|form| form.connecting) => {}
+            Some(_) => self.request_modal_close(),
+        }
     }
 
     fn modal_is_dirty(&self, cx: &Context<Self>) -> bool {
@@ -858,21 +866,6 @@ impl ReefApp {
                     || !self.draft.name_servers.read(cx).is_empty()
             }
             _ => false,
-        }
-    }
-
-    fn dismiss_modal(&mut self, cx: &mut Context<Self>) {
-        match self.modal.clone() {
-            None => {}
-            Some(Modal::ConfirmDiscard) => self.resume_modal(cx),
-            Some(Modal::ConfirmApply) | Some(Modal::ConfirmRestore) => {
-                self.pending_restore = None;
-                self.close_modal();
-                cx.notify();
-            }
-            Some(Modal::Connection)
-                if self.connection.as_ref().is_some_and(|form| form.connecting) => {}
-            Some(_) => self.request_modal_close(cx),
         }
     }
 
@@ -5214,19 +5207,10 @@ impl ReefApp {
 
 impl Render for ReefApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Register global Escape handler once so it dismisses the active modal
-        // even when a text field or other element has focus.
-        if !self.escape_bound {
-            cx.on_action(
-                TypeId::of::<DismissModal>(),
-                window,
-                |this, _action, _phase, _window, cx| {
-                    let _ = _window;
-                    this.dismiss_modal(cx);
-                },
-            );
-            self.escape_bound = true;
-        }
+        // Compute modal dirty state from text field content so that
+        // dismiss_modal() (called from the global Escape handler) can decide
+        // whether to show a confirmation dialog without needing cx access.
+        self.modal_dirty = self.modal_is_dirty(cx);
 
         let body = self.section_body(cx);
         let sidebar = self.sidebar(cx);
@@ -5343,10 +5327,13 @@ impl Render for ReefApp {
                     .on_mouse_down_out(move |event, window, app_cx| {
                         let _ = event;
                         let _ = window;
-                        weak.update(app_cx, |this, cx| {
-                            this.request_modal_close(cx);
-                        })
-                        .ok();
+                        let weak = weak.clone();
+                        app_cx.defer(move |cx| {
+                            weak.update(cx, |this, cx| {
+                                this.request_modal_close();
+                            })
+                            .ok();
+                        });
                     })
                     .child(
                         div()
@@ -6105,7 +6092,7 @@ impl ReefApp {
                             false,
                             cx,
                             |this, cx| {
-                                this.resume_modal(cx);
+                                this.resume_modal();
                                 cx.notify();
                             },
                         ))
@@ -6115,7 +6102,7 @@ impl ReefApp {
                             true,
                             cx,
                             |this, cx| {
-                                this.discard_modal(cx);
+                                this.discard_modal();
                                 cx.notify();
                             },
                         )),
