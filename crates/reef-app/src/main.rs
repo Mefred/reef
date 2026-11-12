@@ -13,6 +13,7 @@ mod operations;
 mod palette;
 mod session_actor;
 mod text_field;
+mod ui;
 
 use std::sync::Arc;
 
@@ -64,7 +65,10 @@ fn main() {
 
     Application::new().run(move |cx: &mut App| {
         cx.bind_keys(text_field::key_bindings());
-        cx.bind_keys([KeyBinding::new("ctrl-q", Quit, None)]);
+        cx.bind_keys([
+            KeyBinding::new("ctrl-q", Quit, None),
+            KeyBinding::new("escape", app::DismissModal, None),
+        ]);
         cx.on_action(|_: &Quit, cx| cx.quit());
 
         let bounds = Bounds::centered(None, size(px(1280.), px(840.)), cx);

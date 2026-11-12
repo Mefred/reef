@@ -159,17 +159,25 @@ pub fn plan(current: &DeviceConfig, desired: &DeviceConfig) -> ChangeSet {
     // Process desired routes (adds and modifies)
     for desired_route in &desired.ip_routes {
         match current_route_map.get(&desired_route.prefix) {
-            Some(current_route) => {
-                if current_route == desired_route {
-                    cs.ip_routes.push(ChangeOp::NoChange);
-                } else {
-                    // Same prefix, different next-hop or admin_distance -> Modify
-                    cs.ip_routes.push(ChangeOp::Modify);
-                }
+            Some(current_route) if current_route == desired_route => {
+                cs.ip_routes.push(ChangeOp::NoChange);
+                cs.routes.push(desired_route.clone());
             }
-            None => cs.ip_routes.push(ChangeOp::Add),
+            Some(current_route) => {
+                // A route prefix is unique on IOS. Replacing the next-hop or
+                // administrative distance must remove the current route before
+                // the desired one can be installed, otherwise the old route
+                // remains pointed at the previous next-hop.
+                cs.ip_routes.push(ChangeOp::Remove);
+                cs.routes.push(current_route.clone());
+                cs.ip_routes.push(ChangeOp::Add);
+                cs.routes.push(desired_route.clone());
+            }
+            None => {
+                cs.ip_routes.push(ChangeOp::Add);
+                cs.routes.push(desired_route.clone());
+            }
         }
-        cs.routes.push(desired_route.clone());
     }
 
     // Process current routes not in desired (removals)

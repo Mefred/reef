@@ -82,7 +82,9 @@ pub fn generate(change_set: &ChangeSet) -> CommandBatch {
                     if !vlan.name.is_empty() {
                         commands.push(format!("name {}", vlan.name));
                     }
-                    if !vlan.enabled {
+                    if vlan.enabled {
+                        commands.push("no shutdown".to_string());
+                    } else {
                         commands.push("shutdown".to_string());
                     }
                     commands.push("exit".to_string());
@@ -199,7 +201,11 @@ pub fn generate(change_set: &ChangeSet) -> CommandBatch {
 
 fn emit_interface_commands(iface: &InterfaceConfig, commands: &mut Vec<String>) {
     if let Some(desc) = &iface.description {
-        commands.push(format!("description {}", desc));
+        if desc.trim().is_empty() {
+            commands.push("no description".to_string());
+        } else {
+            commands.push(format!("description {}", desc));
+        }
     }
     if let Some(ip) = &iface.ipv4 {
         commands.push(format!(
@@ -211,7 +217,9 @@ fn emit_interface_commands(iface: &InterfaceConfig, commands: &mut Vec<String>) 
     if let Some(ip) = &iface.ipv6 {
         commands.push(format!("ipv6 address {} {}", ip.address, ip.prefix_len));
     }
-    if !iface.enabled {
+    if iface.enabled {
+        commands.push("no shutdown".to_string());
+    } else {
         commands.push("shutdown".to_string());
     }
     match iface.mode {

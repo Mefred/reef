@@ -4,6 +4,7 @@
 //! `Storage`, and `AppDiagnostics`. There is no webview, JavaScript bridge, or
 //! Tauri command boundary in this process.
 
+use std::any::TypeId;
 use std::sync::Arc;
 
 use reef_engine::model::DeviceIdentity;
@@ -14,8 +15,9 @@ use reef_storage::{
     TransportType as ProfileTransport,
 };
 use wgpui::{
-    div, prelude::*, px, AnyElement, ClipboardItem, Context, ElementId, Entity, FontWeight, Hsla,
-    InteractiveElement, Render, ScrollHandle, SharedString, WeakEntity, Window,
+    actions, div, prelude::*, px, AnyElement, App, ClipboardItem, Context, ElementId, Entity,
+    FocusHandle, FontWeight, Hsla, InteractiveElement, MouseButton, MouseDownEvent, Render,
+    ScrollHandle, SharedString, WeakEntity, Window,
 };
 
 use crate::diagnostics::{
@@ -26,6 +28,9 @@ use crate::operations::{
     ConnectionRequest,
 };
 use crate::palette;
+use crate::ui;
+
+actions!([DismissModal]);
 /// A transient notification displayed in the top-right corner.
 #[derive(Clone, Debug)]
 struct Toast {
@@ -119,6 +124,24 @@ impl Section {
         }
     }
 
+    fn subtitle(self) -> &'static str {
+        match self {
+            Section::Overview => "Device health, identity, and shortcuts.",
+            Section::Interfaces => "Operational and configured interface state.",
+            Section::Vlans => "Layer 2 broadcast domains configured on the device.",
+            Section::Routing => "Static routes and next hops parsed from the device.",
+            Section::Configuration => "Review, preview, and apply running-configuration changes.",
+            Section::AccessLists => "Parsed access control lists.",
+            Section::Dhcp => "Configured DHCP pools.",
+            Section::System => "Hostname, domain, naming, and system information.",
+            Section::Nat => "Network address translation configuration.",
+            Section::SshAccess => "Remote access and trusted host keys.",
+            Section::Terminal => "Run commands through the active Rust session.",
+            Section::Diagnostics => "Portable logs, environment, and exports.",
+            Section::Connections => "Saved device profiles and connection state.",
+        }
+    }
+
     fn icon(self) -> &'static str {
         match self {
             Section::Overview => "⌂",
@@ -141,6 +164,20 @@ impl Section {
         Self::ALL.iter().position(|item| *item == self).unwrap_or(0)
     }
 
+    fn group(self) -> NavGroup {
+        match self {
+            Section::Overview => NavGroup::Workspace,
+            Section::Interfaces | Section::Vlans | Section::Routing => NavGroup::Operate,
+            Section::Configuration
+            | Section::AccessLists
+            | Section::Dhcp
+            | Section::System
+            | Section::Nat
+            | Section::SshAccess => NavGroup::Configure,
+            Section::Terminal | Section::Diagnostics | Section::Connections => NavGroup::Tools,
+        }
+    }
+
     fn uses_workspace(self) -> bool {
         matches!(
             self,
@@ -158,6 +195,39 @@ impl Section {
                 | Section::Nat
                 | Section::SshAccess
         )
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum NavGroup {
+    Workspace,
+    Operate,
+    Configure,
+    Tools,
+}
+
+impl NavGroup {
+    const ALL: [NavGroup; 4] = [
+        NavGroup::Workspace,
+        NavGroup::Operate,
+        NavGroup::Configure,
+        NavGroup::Tools,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            NavGroup::Workspace => "Workspace",
+            NavGroup::Operate => "Operate",
+            NavGroup::Configure => "Configure",
+            NavGroup::Tools => "Tools",
+        }
+    }
+
+    fn index(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|group| *group == self)
+            .unwrap_or(0)
     }
 }
 
@@ -304,16 +374,37 @@ impl Default for ConfigState {
     }
 }
 
+/// State for the single app-level dialog. Only one modal can be open at a
+/// time; destructive confirmations replace the form dialog temporarily and
+/// restore it if the user changes their mind.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Modal {
+    Connection,
+    Profile,
+    Interface,
+    Vlan,
+    Route,
+    SystemSettings,
+    ConfirmDiscard,
+    ConfirmApply,
+    ConfirmRestore,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SelectField {
+    Transport,
+    InterfaceMode,
+}
+
 struct DraftForm {
     hostname: Entity<TextField>,
     domain_name: Entity<TextField>,
     name_servers: Entity<TextField>,
-    vlan_id: Entity<TextField>,
-    vlan_name: Entity<TextField>,
 }
 
-/// Inline edit state for adding or modifying an interface.
+/// Edit state for adding or modifying an interface.
 struct InterfaceEditForm {
+    editing: bool,
     name: Entity<TextField>,
     description: Entity<TextField>,
     enabled: bool,
@@ -321,7 +412,6 @@ struct InterfaceEditForm {
     access_vlan: Entity<TextField>,
     ipv4_address: Entity<TextField>,
     ipv4_prefix_len: Entity<TextField>,
-    shutdown: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -341,17 +431,38 @@ impl InterfaceModeChoice {
             InterfaceModeChoice::L2 => "L2 (switch)",
         }
     }
+
+    fn draft_value(self) -> &'static str {
+        match self {
+            InterfaceModeChoice::Routed => "routed",
+            InterfaceModeChoice::Access => "access",
+            InterfaceModeChoice::Trunk => "trunk",
+            InterfaceModeChoice::L2 => "l2",
+        }
+    }
+
+    fn from_mode(mode: &str) -> Self {
+        match mode.to_ascii_lowercase().as_str() {
+            "access" => InterfaceModeChoice::Access,
+            "trunk" => InterfaceModeChoice::Trunk,
+            "l2" => InterfaceModeChoice::L2,
+            _ => InterfaceModeChoice::Routed,
+        }
+    }
 }
 
-/// Inline edit state for adding or modifying a VLAN.
+/// Edit state for adding or modifying a VLAN.
 struct VlanEditForm {
+    editing: bool,
     id: Entity<TextField>,
     name: Entity<TextField>,
     enabled: bool,
 }
 
-/// Inline edit state for adding or modifying a static route.
+/// Edit state for adding or replacing a static route.
 struct RouteEditForm {
+    editing: bool,
+    original_prefix: Option<String>,
     prefix: Entity<TextField>,
     next_hop: Entity<TextField>,
     admin_distance: Entity<TextField>,
@@ -363,8 +474,6 @@ impl DraftForm {
             hostname: field(cx, "Router-01", false, ""),
             domain_name: field(cx, "example.net", false, ""),
             name_servers: field(cx, "1.1.1.1, 8.8.8.8", false, ""),
-            vlan_id: field(cx, "10", false, ""),
-            vlan_name: field(cx, "USERS", false, ""),
         }
     }
 }
@@ -452,6 +561,8 @@ pub struct ReefApp {
     diagnostics: Arc<AppDiagnostics>,
     active: Section,
     content_scroll: ScrollHandle,
+    sidebar_collapsed: bool,
+    collapsed_groups: [bool; 4],
     profiles: Vec<DeviceProfile>,
     profiles_loading: bool,
     profile_error: Option<String>,
@@ -464,6 +575,14 @@ pub struct ReefApp {
     interface_edit: Option<InterfaceEditForm>,
     vlan_edit: Option<VlanEditForm>,
     route_edit: Option<RouteEditForm>,
+    modal: Option<Modal>,
+    pending_modal: Option<Modal>,
+    modal_error: Option<String>,
+    open_select: Option<SelectField>,
+    modal_focus: FocusHandle,
+    escape_bound: bool,
+    pending_restore: Option<String>,
+    show_details: bool,
     terminal: TerminalState,
     diagnostics_ui: DiagnosticsState,
     toasts: Vec<Toast>,
@@ -483,6 +602,8 @@ impl ReefApp {
             diagnostics,
             active: Section::Overview,
             content_scroll: ScrollHandle::new(),
+            sidebar_collapsed: false,
+            collapsed_groups: [false; 4],
             profiles: Vec::new(),
             profiles_loading: false,
             profile_error: None,
@@ -495,6 +616,14 @@ impl ReefApp {
             interface_edit: None,
             vlan_edit: None,
             route_edit: None,
+            modal: None,
+            pending_modal: None,
+            modal_error: None,
+            open_select: None,
+            modal_focus: cx.focus_handle(),
+            escape_bound: false,
+            pending_restore: None,
+            show_details: false,
             terminal: TerminalState::new(cx),
             diagnostics_ui: DiagnosticsState::new(cx),
             toasts: Vec::new(),
@@ -619,17 +748,230 @@ impl ReefApp {
 
     fn navigate(&mut self, section: Section, cx: &mut Context<Self>) {
         self.active = section;
+        self.close_modal();
         if section.uses_workspace() {
             self.refresh_workspace(cx);
         } else if section.uses_configuration() {
             self.refresh_configuration(cx);
+            if section == Section::Configuration {
+                self.refresh_backups(cx);
+                self.refresh_change_history(cx);
+            }
+        } else if section == Section::Overview {
+            if self.connected.is_some() {
+                self.refresh_workspace(cx);
+                if self.config.data.is_none() {
+                    self.refresh_configuration(cx);
+                }
+            }
         } else if section == Section::Diagnostics {
             self.refresh_diagnostics(cx);
             self.refresh_log_files(cx);
         } else if section == Section::Terminal {
             self.refresh_recording(cx);
+        } else if section == Section::SshAccess {
+            self.refresh_known_hosts(cx);
         }
         cx.notify();
+    }
+
+    // ------------------------------------------------------------------
+    // Modal lifecycle
+    // ------------------------------------------------------------------
+
+    fn open_modal(&mut self, modal: Modal, cx: &mut Context<Self>) {
+        self.modal = Some(modal);
+        self.pending_modal = None;
+        self.modal_error = None;
+        self.open_select = None;
+        cx.notify();
+    }
+
+    fn close_modal(&mut self) {
+        self.modal = None;
+        self.pending_modal = None;
+        self.modal_error = None;
+        self.open_select = None;
+    }
+
+    /// Close the current dialog unless it contains unsaved input. In that case
+    /// replace it with a confirmation dialog that can restore the form.
+    fn request_modal_close(&mut self, cx: &mut Context<Self>) {
+        if self.modal_is_dirty(cx) {
+            if let Some(modal) = self.modal.take() {
+                self.pending_modal = Some(modal);
+            }
+            self.modal = Some(Modal::ConfirmDiscard);
+            self.open_select = None;
+            self.modal_error = None;
+        } else {
+            self.close_modal();
+        }
+        cx.notify();
+    }
+
+    fn discard_modal(&mut self, cx: &mut Context<Self>) {
+        self.close_modal();
+        self.connection = None;
+        self.interface_edit = None;
+        self.vlan_edit = None;
+        self.route_edit = None;
+        cx.notify();
+    }
+
+    fn resume_modal(&mut self, cx: &mut Context<Self>) {
+        if let Some(modal) = self.pending_modal.take() {
+            self.modal = Some(modal);
+        } else {
+            self.modal = None;
+        }
+        cx.notify();
+    }
+
+    fn modal_is_dirty(&self, cx: &Context<Self>) -> bool {
+        match self.modal {
+            Some(Modal::Connection) => self.connection.as_ref().is_some_and(|form| {
+                form.trust_host_key
+                    || !form.password.read(cx).is_empty()
+                    || !form.enable_secret.read(cx).is_empty()
+            }),
+            Some(Modal::Profile) => {
+                !self.profile_form.name.read(cx).is_empty()
+                    || !self.profile_form.host.read(cx).is_empty()
+                    || !self.profile_form.username.read(cx).is_empty()
+            }
+            Some(Modal::Interface) => self.interface_edit.as_ref().is_some_and(|form| {
+                !form.name.read(cx).is_empty()
+                    || !form.description.read(cx).is_empty()
+                    || !form.ipv4_address.read(cx).is_empty()
+            }),
+            Some(Modal::Vlan) => self
+                .vlan_edit
+                .as_ref()
+                .is_some_and(|form| !form.id.read(cx).is_empty() || !form.name.read(cx).is_empty()),
+            Some(Modal::Route) => self.route_edit.as_ref().is_some_and(|form| {
+                !form.prefix.read(cx).is_empty() || !form.next_hop.read(cx).is_empty()
+            }),
+            Some(Modal::SystemSettings) => {
+                !self.draft.hostname.read(cx).is_empty()
+                    || !self.draft.domain_name.read(cx).is_empty()
+                    || !self.draft.name_servers.read(cx).is_empty()
+            }
+            _ => false,
+        }
+    }
+
+    fn dismiss_modal(&mut self, cx: &mut Context<Self>) {
+        match self.modal.clone() {
+            None => {}
+            Some(Modal::ConfirmDiscard) => self.resume_modal(cx),
+            Some(Modal::ConfirmApply) | Some(Modal::ConfirmRestore) => {
+                self.pending_restore = None;
+                self.close_modal();
+                cx.notify();
+            }
+            Some(Modal::Connection)
+                if self.connection.as_ref().is_some_and(|form| form.connecting) => {}
+            Some(_) => self.request_modal_close(cx),
+        }
+    }
+
+    fn open_interface_modal(
+        &mut self,
+        interface: Option<&crate::session_actor::ConfiguredInterface>,
+        cx: &mut Context<Self>,
+    ) {
+        let (editing, name, description, enabled, mode, access_vlan, address, prefix) =
+            match interface {
+                Some(interface) => {
+                    let (address, prefix) = interface
+                        .ipv4
+                        .as_deref()
+                        .and_then(|value| value.split_once('/'))
+                        .map(|(address, prefix)| (address.to_string(), prefix.to_string()))
+                        .unwrap_or_default();
+                    (
+                        true,
+                        interface.name.clone(),
+                        interface.description.clone().unwrap_or_default(),
+                        interface.enabled,
+                        InterfaceModeChoice::from_mode(&interface.mode),
+                        interface
+                            .access_vlan
+                            .map(|vlan| vlan.to_string())
+                            .unwrap_or_default(),
+                        address,
+                        prefix,
+                    )
+                }
+                None => (
+                    false,
+                    String::new(),
+                    String::new(),
+                    true,
+                    InterfaceModeChoice::Routed,
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                ),
+            };
+
+        self.interface_edit = Some(InterfaceEditForm {
+            editing,
+            name: field_owned(cx, "GigabitEthernet1/0/1", false, &name),
+            description: field_owned(cx, "Interface description", false, &description),
+            enabled,
+            mode,
+            access_vlan: field_owned(cx, "10", false, &access_vlan),
+            ipv4_address: field_owned(cx, "10.0.0.1", false, &address),
+            ipv4_prefix_len: field_owned(cx, "24", false, &prefix),
+        });
+        self.open_modal(Modal::Interface, cx);
+    }
+
+    fn open_vlan_modal(
+        &mut self,
+        vlan: Option<&reef_engine::model::VlanConfig>,
+        cx: &mut Context<Self>,
+    ) {
+        let (editing, id, name, enabled) = match vlan {
+            Some(vlan) => (true, vlan.id.to_string(), vlan.name.clone(), vlan.enabled),
+            None => (false, String::new(), String::new(), true),
+        };
+        self.vlan_edit = Some(VlanEditForm {
+            editing,
+            id: field_owned(cx, "10", false, &id),
+            name: field_owned(cx, "USERS", false, &name),
+            enabled,
+        });
+        self.open_modal(Modal::Vlan, cx);
+    }
+
+    fn open_route_modal(
+        &mut self,
+        route: Option<&reef_engine::model::StaticRoute>,
+        cx: &mut Context<Self>,
+    ) {
+        let (editing, prefix, next_hop, admin_distance) = match route {
+            Some(route) => (
+                true,
+                route.prefix.to_string(),
+                route.next_hop.to_string(),
+                route
+                    .admin_distance
+                    .map(|distance| distance.to_string())
+                    .unwrap_or_default(),
+            ),
+            None => (false, String::new(), String::new(), String::new()),
+        };
+        self.route_edit = Some(RouteEditForm {
+            editing,
+            original_prefix: route.map(|route| route.prefix.to_string()),
+            prefix: field_owned(cx, "192.0.2.0/24", false, &prefix),
+            next_hop: field_owned(cx, "10.0.0.1", false, &next_hop),
+            admin_distance: field_owned(cx, "1", false, &admin_distance),
+        });
+        self.open_modal(Modal::Route, cx);
     }
 
     // ------------------------------------------------------------------
@@ -740,6 +1082,7 @@ impl ReefApp {
                             .port
                             .update(cx, |field, cx| field.set_content(reset_port, cx));
                         this.show_toast(ToastKind::Success, "Profile saved");
+                        this.close_modal();
                     }
                     Err(error) => this.profile_form.error = Some(error),
                 }
@@ -798,6 +1141,7 @@ impl ReefApp {
         // Keep the entity alive by re-reading it from the app; the connection
         // form state itself is plain data plus field entities.
         let _ = form;
+        self.open_modal(Modal::Connection, cx);
     }
 
     fn connect_selected(&mut self, cx: &mut Context<Self>) {
@@ -890,12 +1234,15 @@ impl ReefApp {
                 this.install_connected_handlers(&connected, cx);
                 this.connected = Some(connected.read(cx).clone_for_state());
                 this.connection = None;
+                this.close_modal();
                 this.workspace = WorkspaceState::default();
                 this.config = ConfigState::default();
                 this.terminal.reset();
                 this.terminal.recording = recording;
                 this.active = Section::Overview;
                 this.show_toast(ToastKind::Success, "Connected to device");
+                this.refresh_workspace(cx);
+                this.refresh_configuration(cx);
                 cx.notify();
             })
             .ok();
@@ -1050,23 +1397,11 @@ impl ReefApp {
         let hostname = self.draft.hostname.read(cx).text().trim().to_string();
         let domain_name = self.draft.domain_name.read(cx).text().trim().to_string();
         let name_servers = split_name_servers(&self.draft.name_servers.read(cx).text());
-        let vlan_id = self.draft.vlan_id.read(cx).text().trim().to_string();
-        let vlan_name = self.draft.vlan_name.read(cx).text().trim().to_string();
-
-        let mut add_vlans = Vec::new();
-        if !vlan_id.is_empty() && !vlan_name.is_empty() {
-            match vlan_id.parse::<u16>() {
-                Ok(id) => add_vlans.push(AddVlanDraft {
-                    id,
-                    name: vlan_name,
-                }),
-                Err(_) => {
-                    self.config.preview_error =
-                        Some("VLAN ID must be a number between 1 and 4094".to_string());
-                    cx.notify();
-                    return;
-                }
-            }
+        if hostname.is_empty() && domain_name.is_empty() && name_servers.is_empty() {
+            self.modal_error =
+                Some("Set at least one system field before generating a preview.".to_string());
+            cx.notify();
+            return;
         }
 
         let draft = ConfigurationDraft {
@@ -1074,7 +1409,7 @@ impl ReefApp {
             domain_name: non_empty(domain_name),
             add_name_servers: name_servers,
             remove_name_servers: Vec::new(),
-            add_vlans,
+            add_vlans: Vec::new(),
             remove_vlan_ids: Vec::new(),
             add_interfaces: Vec::new(),
             remove_interface_names: Vec::new(),
@@ -1086,6 +1421,7 @@ impl ReefApp {
         self.config.preview_loading = true;
         self.config.preview_error = None;
         self.config.preview = None;
+        self.modal_error = None;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -1097,12 +1433,20 @@ impl ReefApp {
                         let has_errors = !preview.errors.is_empty();
                         this.config.preview = Some(preview);
                         this.config.preview_error = None;
-                        if !has_errors {
+                        this.close_modal();
+                        this.active = Section::Configuration;
+                        if has_errors {
+                            this.show_toast(
+                                ToastKind::Warning,
+                                "Preview generated with validation errors",
+                            );
+                        } else {
                             this.show_toast(ToastKind::Success, "Preview generated");
                         }
                     }
                     Err(error) => {
                         this.config.preview_error = Some(error.clone());
+                        this.modal_error = Some(error.clone());
                         this.show_toast(ToastKind::Error, format!("Preview failed: {error}"));
                     }
                 }
@@ -1127,6 +1471,12 @@ impl ReefApp {
         };
         if preview.commands.is_empty() {
             self.config.apply_error = Some("no commands to apply".to_string());
+            cx.notify();
+            return;
+        }
+        if !preview.errors.is_empty() {
+            self.config.apply_error =
+                Some("resolve preview validation errors before applying".to_string());
             cx.notify();
             return;
         }
@@ -1156,7 +1506,11 @@ impl ReefApp {
                             Some("configuration applied successfully".to_string());
                         this.config.preview = None;
                         this.config.apply_error = None;
+                        this.close_modal();
                         this.show_toast(ToastKind::Success, "Configuration applied");
+                        this.refresh_configuration(cx);
+                        this.refresh_workspace(cx);
+                        this.refresh_change_history(cx);
                     }
                     Err(error) => {
                         this.config.apply_error = Some(error.clone());
@@ -1544,53 +1898,65 @@ impl ReefApp {
             return;
         }
         let Some(form) = self.interface_edit.as_mut() else {
+            self.modal_error = Some("Interface editor is not open.".to_string());
+            cx.notify();
             return;
         };
         let name = form.name.read(cx).text().trim().to_string();
         if name.is_empty() {
-            self.config.preview_error = Some("interface name is required".to_string());
+            self.modal_error = Some("Interface name is required.".to_string());
             cx.notify();
             return;
         }
-        let mut add_interfaces = Vec::new();
+        let description = form.description.read(cx).text().trim().to_string();
         let mut interface = InterfaceDraft {
             name,
-            description: None,
-            enabled: None,
-            mode: None,
+            description: Some(description),
+            enabled: Some(form.enabled),
+            mode: Some(form.mode.draft_value().to_string()),
             access_vlan: None,
             ipv4_address: None,
             ipv4_prefix_len: None,
             shutdown: None,
         };
-        let desc = form.description.read(cx).text().trim().to_string();
-        if !desc.is_empty() {
-            interface.description = Some(desc);
-        }
-        interface.enabled = Some(form.enabled);
-        interface.mode = Some(
-            match form.mode {
-                InterfaceModeChoice::Routed => "routed",
-                InterfaceModeChoice::Access => "access",
-                InterfaceModeChoice::Trunk => "trunk",
-                InterfaceModeChoice::L2 => "l2",
+        let vlan = form.access_vlan.read(cx).text().trim().to_string();
+        if !vlan.is_empty() {
+            match vlan.parse::<u16>() {
+                Ok(vlan) => interface.access_vlan = Some(vlan),
+                Err(_) => {
+                    self.modal_error = Some("Access VLAN must be a number.".to_string());
+                    cx.notify();
+                    return;
+                }
             }
-            .to_string(),
-        );
-        if let Some(vlan) = form.access_vlan.read(cx).text().trim().parse::<u16>().ok() {
-            interface.access_vlan = Some(vlan);
         }
-        let addr = form.ipv4_address.read(cx).text().trim().to_string();
+        let address = form.ipv4_address.read(cx).text().trim().to_string();
         let prefix = form.ipv4_prefix_len.read(cx).text().trim().to_string();
-        if !addr.is_empty() && !prefix.is_empty() {
-            interface.ipv4_address = Some(addr);
-            interface.ipv4_prefix_len = prefix.parse::<u8>().ok();
+        if !address.is_empty() || !prefix.is_empty() {
+            if address.is_empty() || prefix.is_empty() {
+                self.modal_error =
+                    Some("IPv4 address and prefix length must be provided together.".to_string());
+                cx.notify();
+                return;
+            }
+            if address.parse::<std::net::Ipv4Addr>().is_err() {
+                self.modal_error = Some(format!("Invalid IPv4 address: {address}"));
+                cx.notify();
+                return;
+            }
+            match prefix.parse::<u8>() {
+                Ok(prefix) if prefix <= 32 => {
+                    interface.ipv4_address = Some(address);
+                    interface.ipv4_prefix_len = Some(prefix);
+                }
+                _ => {
+                    self.modal_error =
+                        Some("IPv4 prefix length must be between 0 and 32.".to_string());
+                    cx.notify();
+                    return;
+                }
+            }
         }
-        if form.shutdown {
-            interface.enabled = Some(false);
-            interface.shutdown = Some(true);
-        }
-        add_interfaces.push(interface);
 
         let draft = ConfigurationDraft {
             hostname: None,
@@ -1599,7 +1965,7 @@ impl ReefApp {
             remove_name_servers: Vec::new(),
             add_vlans: Vec::new(),
             remove_vlan_ids: Vec::new(),
-            add_interfaces,
+            add_interfaces: vec![interface],
             remove_interface_names: Vec::new(),
             add_routes: Vec::new(),
             remove_route_prefixes: Vec::new(),
@@ -1609,7 +1975,7 @@ impl ReefApp {
         self.config.preview_loading = true;
         self.config.preview_error = None;
         self.config.preview = None;
-        self.interface_edit = None;
+        self.modal_error = None;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -1618,10 +1984,29 @@ impl ReefApp {
                 this.config.preview_loading = false;
                 match result {
                     Ok(preview) => {
+                        let has_errors = !preview.errors.is_empty();
                         this.config.preview = Some(preview);
                         this.config.preview_error = None;
+                        this.close_modal();
+                        this.interface_edit = None;
+                        this.active = Section::Configuration;
+                        this.show_toast(
+                            if has_errors {
+                                ToastKind::Warning
+                            } else {
+                                ToastKind::Success
+                            },
+                            if has_errors {
+                                "Preview generated with validation errors"
+                            } else {
+                                "Interface preview generated"
+                            },
+                        );
                     }
-                    Err(error) => this.config.preview_error = Some(error),
+                    Err(error) => {
+                        this.config.preview_error = Some(error.clone());
+                        this.modal_error = Some(error);
+                    }
                 }
                 cx.notify();
             })
@@ -1638,20 +2023,22 @@ impl ReefApp {
             return;
         }
         let Some(form) = self.vlan_edit.as_mut() else {
+            self.modal_error = Some("VLAN editor is not open.".to_string());
+            cx.notify();
             return;
         };
         let id_str = form.id.read(cx).text().trim().to_string();
         let id: u16 = match id_str.parse() {
             Ok(id) => id,
             Err(_) => {
-                self.config.preview_error = Some("VLAN ID must be a number".to_string());
+                self.modal_error = Some("VLAN ID must be a number.".to_string());
                 cx.notify();
                 return;
             }
         };
         let name = form.name.read(cx).text().trim().to_string();
         if name.is_empty() {
-            self.config.preview_error = Some("VLAN name is required".to_string());
+            self.modal_error = Some("VLAN name is required.".to_string());
             cx.notify();
             return;
         }
@@ -1660,7 +2047,11 @@ impl ReefApp {
             domain_name: None,
             add_name_servers: Vec::new(),
             remove_name_servers: Vec::new(),
-            add_vlans: vec![AddVlanDraft { id, name }],
+            add_vlans: vec![AddVlanDraft {
+                id,
+                name,
+                enabled: Some(form.enabled),
+            }],
             remove_vlan_ids: Vec::new(),
             add_interfaces: Vec::new(),
             remove_interface_names: Vec::new(),
@@ -1672,7 +2063,7 @@ impl ReefApp {
         self.config.preview_loading = true;
         self.config.preview_error = None;
         self.config.preview = None;
-        self.vlan_edit = None;
+        self.modal_error = None;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -1681,10 +2072,29 @@ impl ReefApp {
                 this.config.preview_loading = false;
                 match result {
                     Ok(preview) => {
+                        let has_errors = !preview.errors.is_empty();
                         this.config.preview = Some(preview);
                         this.config.preview_error = None;
+                        this.close_modal();
+                        this.vlan_edit = None;
+                        this.active = Section::Configuration;
+                        this.show_toast(
+                            if has_errors {
+                                ToastKind::Warning
+                            } else {
+                                ToastKind::Success
+                            },
+                            if has_errors {
+                                "Preview generated with validation errors"
+                            } else {
+                                "VLAN preview generated"
+                            },
+                        );
                     }
-                    Err(error) => this.config.preview_error = Some(error),
+                    Err(error) => {
+                        this.config.preview_error = Some(error.clone());
+                        this.modal_error = Some(error);
+                    }
                 }
                 cx.notify();
             })
@@ -1701,22 +2111,47 @@ impl ReefApp {
             return;
         }
         let Some(form) = self.route_edit.as_mut() else {
+            self.modal_error = Some("Route editor is not open.".to_string());
+            cx.notify();
             return;
         };
         let prefix_str = form.prefix.read(cx).text().trim().to_string();
         let next_hop_str = form.next_hop.read(cx).text().trim().to_string();
         if prefix_str.is_empty() || next_hop_str.is_empty() {
-            self.config.preview_error = Some("prefix and next-hop are required".to_string());
+            self.modal_error = Some("Prefix and next hop are required.".to_string());
             cx.notify();
             return;
         }
-        let admin_dist = form
-            .admin_distance
-            .read(cx)
-            .text()
-            .trim()
-            .parse::<u16>()
-            .ok();
+        if prefix_str.parse::<ipnet::IpNet>().is_err() {
+            self.modal_error = Some("Prefix must be CIDR, for example 192.0.2.0/24.".to_string());
+            cx.notify();
+            return;
+        }
+        if next_hop_str.parse::<std::net::IpAddr>().is_err() {
+            self.modal_error = Some(format!("Invalid next hop: {next_hop_str}"));
+            cx.notify();
+            return;
+        }
+        let admin_text = form.admin_distance.read(cx).text().trim().to_string();
+        let admin_distance = if admin_text.is_empty() {
+            None
+        } else {
+            match admin_text.parse::<u16>() {
+                Ok(distance) if distance >= 1 => Some(distance),
+                _ => {
+                    self.modal_error =
+                        Some("Administrative distance must be a positive number.".to_string());
+                    cx.notify();
+                    return;
+                }
+            }
+        };
+        let remove_route_prefixes = form
+            .original_prefix
+            .clone()
+            .filter(|original| original != &prefix_str)
+            .into_iter()
+            .collect();
         let draft = ConfigurationDraft {
             hostname: None,
             domain_name: None,
@@ -1729,16 +2164,16 @@ impl ReefApp {
             add_routes: vec![RouteDraft {
                 prefix: prefix_str,
                 next_hop: next_hop_str,
-                admin_distance: admin_dist,
+                admin_distance,
             }],
-            remove_route_prefixes: Vec::new(),
+            remove_route_prefixes,
         };
         let device_id = connected.profile.id.clone();
         let session = self.session.clone();
         self.config.preview_loading = true;
         self.config.preview_error = None;
         self.config.preview = None;
-        self.route_edit = None;
+        self.modal_error = None;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -1747,10 +2182,29 @@ impl ReefApp {
                 this.config.preview_loading = false;
                 match result {
                     Ok(preview) => {
+                        let has_errors = !preview.errors.is_empty();
                         this.config.preview = Some(preview);
                         this.config.preview_error = None;
+                        this.close_modal();
+                        this.route_edit = None;
+                        this.active = Section::Configuration;
+                        this.show_toast(
+                            if has_errors {
+                                ToastKind::Warning
+                            } else {
+                                ToastKind::Success
+                            },
+                            if has_errors {
+                                "Preview generated with validation errors"
+                            } else {
+                                "Route preview generated"
+                            },
+                        );
                     }
-                    Err(error) => this.config.preview_error = Some(error),
+                    Err(error) => {
+                        this.config.preview_error = Some(error.clone());
+                        this.modal_error = Some(error);
+                    }
                 }
                 cx.notify();
             })
@@ -2174,10 +2628,10 @@ impl ReefApp {
             .py_2()
             .rounded_md()
             .cursor_pointer()
-            .text_sm()
+            .text_xs()
             .child(
                 div()
-                    .w(px(22.))
+                    .w(px(18.))
                     .flex_shrink_0()
                     .text_color(if active {
                         palette::accent()
@@ -2203,77 +2657,84 @@ impl ReefApp {
             .into_any_element()
     }
 
-    fn action_button<F>(
-        label: impl Into<SharedString>,
-        enabled: bool,
-        primary: bool,
-        cx: &mut Context<Self>,
-        action: F,
-    ) -> AnyElement
-    where
-        F: Fn(&mut Self, &mut Context<Self>) + 'static,
-    {
-        let label: SharedString = label.into();
-        let mut button = div()
-            .id(ElementId::Name(label.clone()))
-            .flex()
-            .items_center()
-            .justify_center()
-            .h(px(34.))
-            .px_3()
-            .rounded_md()
-            .text_sm()
-            .font_weight(FontWeight::SEMIBOLD)
-            .child(label);
-
-        if primary {
-            button = button
-                .bg(palette::accent())
-                .text_color(palette::background());
-        } else {
-            button = button
-                .bg(palette::panel_alt())
-                .text_color(palette::text())
-                .border_1()
-                .border_color(palette::panel_border());
-        }
-
-        if enabled {
-            button = button
-                .cursor_pointer()
-                .hover(|style| style.opacity(0.85))
-                .on_click(cx.listener(move |this, _, _, cx| action(this, cx)));
-        } else {
-            button = button.opacity(0.5);
-        }
-
-        button.into_any_element()
-    }
-
-    fn field_block(label: impl Into<SharedString>, field: Entity<TextField>) -> AnyElement {
+    fn group_header(group: NavGroup, collapsed: bool, cx: &mut Context<Self>) -> AnyElement {
+        let arrow = if collapsed { "▸" } else { "▾" };
         div()
             .flex()
-            .flex_col()
-            .gap_1()
+            .items_center()
+            .gap_2()
             .w_full()
+            .px_3()
+            .py_2()
+            .cursor_pointer()
+            .text_xs()
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(palette::text_faint())
+            .child(arrow)
+            .child(group.label())
             .child(
                 div()
-                    .text_xs()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(palette::text_muted())
-                    .child(label.into()),
-            )
-            .child(field)
-            .into_any_element()
+                    .flex_1()
+                    .child(div().h(px(1.)).bg(palette::panel_border())),
+            );
+        let mut header = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .w_full()
+            .px_3()
+            .py_2()
+            .cursor_pointer()
+            .text_xs()
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(palette::text_faint())
+            .child(arrow)
+            .child(group.label())
+            .child(
+                div()
+                    .flex_1()
+                    .child(div().h(px(1.)).bg(palette::panel_border())),
+            );
+        let weak = cx.entity().downgrade();
+        header = header.on_mouse_down(MouseButton::Left, move |event, window, app| {
+            let _ = event;
+            let _ = window;
+            weak.update(app, |this, cx| {
+                let index = group.index();
+                this.collapsed_groups[index] = !this.collapsed_groups[index];
+                cx.notify();
+            })
+            .ok();
+        });
+        header.into_any_element()
+    }
+
+    fn group_items(group: NavGroup, cx: &mut Context<Self>) -> Vec<Section> {
+        Section::ALL
+            .iter()
+            .copied()
+            .filter(|section| section.group() == group)
+            .collect()
     }
 
     fn sidebar(&self, cx: &mut Context<Self>) -> AnyElement {
-        let mut nav = div().flex().flex_col().gap_1().w_full();
-        for section in Section::ALL {
-            if section == Section::Connections {
-                nav = nav.child(div().h(px(8.)));
+        let width = if self.sidebar_collapsed {
+            px(72.)
+        } else {
+            px(224.)
+        };
+        let connected = self.connected.is_some();
+
+        let mut groups_content = div().flex().flex_col().gap_1().w_full();
+        for group in NavGroup::ALL {
+            let collapsed = self.collapsed_groups[group.index()];
+            groups_content = groups_content.child(Self::group_header(group, collapsed, cx));
+            if !collapsed {
+                for section in Self::group_items(group, cx) {
+                    groups_content =
+                        groups_content.child(Self::nav_item(self.active == section, section, cx));
+                }
             }
-            nav = nav.child(Self::nav_item(self.active == section, section, cx));
         }
 
         let status_label = self
@@ -2281,76 +2742,98 @@ impl ReefApp {
             .as_ref()
             .map(|connected| connected.profile.name.clone())
             .unwrap_or_else(|| "Not connected".to_string());
-        let status_color = if self.connected.is_some() {
+        let status_color = if connected {
             palette::accent()
         } else {
             palette::text_faint()
         };
 
-        div()
-            .w(px(224.))
+        let mut sidebar = div()
+            .w(width)
             .h_full()
             .flex_shrink_0()
             .flex()
             .flex_col()
             .gap_4()
-            .p_4()
+            .p_3()
             .border_r_1()
             .border_color(palette::panel_border())
-            .bg(palette::sidebar())
+            .bg(palette::sidebar());
+
+        let mut logo = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .pb_3()
+            .cursor_pointer()
             .child(
                 div()
+                    .size(px(24.))
                     .flex()
                     .items_center()
-                    .gap_2()
-                    .pb_2()
-                    .child(
-                        div()
-                            .size(px(28.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .rounded_full()
-                            .bg(palette::accent())
-                            .text_color(palette::background())
-                            .font_weight(FontWeight::BOLD)
-                            .child("r"),
-                    )
-                    .child(
-                        div()
-                            .text_xl()
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(palette::text())
-                            .child("reef."),
-                    ),
+                    .justify_center()
+                    .rounded_full()
+                    .bg(palette::accent())
+                    .text_color(palette::background())
+                    .font_weight(FontWeight::BOLD)
+                    .child("r"),
             )
             .child(
+                div()
+                    .text_xl()
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(palette::text())
+                    .truncate()
+                    .child("reef."),
+            );
+        let weak = cx.entity().downgrade();
+        logo = logo.on_mouse_down(MouseButton::Left, move |event, window, app| {
+            let _ = event;
+            let _ = window;
+            weak.update(app, |this, cx| {
+                this.sidebar_collapsed = !this.sidebar_collapsed;
+                cx.notify();
+            })
+            .ok();
+        });
+        sidebar = sidebar.child(logo);
+
+        if !self.sidebar_collapsed {
+            sidebar = sidebar.child(
                 div()
                     .text_xs()
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(palette::text_faint())
                     .child("WORKSPACE"),
-            )
-            .child(nav)
-            .child(div().flex_1())
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_2()
-                    .py_2()
-                    .rounded_md()
-                    .bg(palette::panel())
-                    .child(div().size(px(8.)).rounded_full().bg(status_color))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(palette::text_muted())
-                            .child(status_label),
-                    ),
-            )
-            .into_any_element()
+            );
+            sidebar = sidebar.child(groups_content);
+            sidebar = sidebar.child(div().flex_1());
+        }
+
+        sidebar = sidebar.child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_2()
+                .py_2()
+                .rounded_md()
+                .bg(palette::panel())
+                .child(div().size(px(8.)).rounded_full().bg(status_color))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(if connected {
+                            palette::text()
+                        } else {
+                            palette::text_muted()
+                        })
+                        .truncate()
+                        .child(status_label),
+                ),
+        );
+
+        sidebar.into_any_element()
     }
 
     fn topbar(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -2419,7 +2902,14 @@ impl ReefApp {
             .into_any_element()
     }
 
-    fn page_heading(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn page_heading(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let is_connected = self.connected.is_some();
+        let connect_enabled = is_connected
+            && matches!(
+                self.active,
+                Section::Overview | Section::Interfaces | Section::Vlans | Section::Routing
+            );
+
         div()
             .flex()
             .items_end()
@@ -2449,16 +2939,106 @@ impl ReefApp {
                         div()
                             .text_sm()
                             .text_color(palette::text_muted())
-                            .child("Manage your network devices from one place."),
+                            .child(self.active.subtitle()),
                     ),
             )
-            .child(Self::action_button(
-                "＋ Connect device",
-                true,
-                true,
-                cx,
-                |this, cx| this.navigate(Section::Connections, cx),
-            ))
+            .child(
+                div()
+                    .flex()
+                    .flex_shrink_0()
+                    .items_center()
+                    .gap_2()
+                    .child(Self::action_button(
+                        "＋ Connect device",
+                        true,
+                        true,
+                        cx,
+                        |this, cx| this.navigate(Section::Connections, cx),
+                    ))
+                    .child(Self::action_button(
+                        "＋ Edit",
+                        connect_enabled,
+                        false,
+                        cx,
+                        move |this, cx| match this.active {
+                            Section::Interfaces => {
+                                this.open_interface_modal(None, cx);
+                            }
+                            Section::Vlans => {
+                                this.open_vlan_modal(None, cx);
+                            }
+                            Section::Routing => {
+                                this.open_route_modal(None, cx);
+                            }
+                            _ => {}
+                        },
+                    ))
+                    .into_any_element(),
+            )
+            .into_any_element()
+    }
+
+    fn action_button<F>(
+        label: impl Into<SharedString>,
+        enabled: bool,
+        primary: bool,
+        cx: &mut Context<Self>,
+        action: F,
+    ) -> AnyElement
+    where
+        F: Fn(&mut Self, &mut Context<Self>) + 'static,
+    {
+        let label: SharedString = label.into();
+        let mut button = div()
+            .id(ElementId::Name(label.clone()))
+            .flex()
+            .items_center()
+            .justify_center()
+            .h(px(34.))
+            .px_3()
+            .rounded_md()
+            .text_sm()
+            .font_weight(FontWeight::SEMIBOLD)
+            .child(label);
+
+        if primary {
+            button = button
+                .bg(palette::accent())
+                .text_color(palette::background());
+        } else {
+            button = button
+                .bg(palette::panel_alt())
+                .text_color(palette::text())
+                .border_1()
+                .border_color(palette::panel_border());
+        }
+
+        if enabled {
+            button = button
+                .cursor_pointer()
+                .hover(|style| style.opacity(0.85))
+                .on_click(cx.listener(move |this, _, _, cx| action(this, cx)));
+        } else {
+            button = button.opacity(0.5);
+        }
+
+        button.into_any_element()
+    }
+
+    fn field_block(label: impl Into<SharedString>, field: Entity<TextField>) -> AnyElement {
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .w_full()
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(palette::text_muted())
+                    .child(label.into()),
+            )
+            .child(field)
             .into_any_element()
     }
 
@@ -3153,25 +3733,15 @@ impl ReefApp {
                     .child(Self::field_block(
                         "Name servers",
                         self.draft.name_servers.clone(),
-                    ))
-                    .child(Self::field_block(
-                        "New VLAN ID",
-                        self.draft.vlan_id.clone(),
-                    ))
-                    .child(Self::field_block(
-                        "New VLAN name",
-                        self.draft.vlan_name.clone(),
                     )),
             )
             .child(paragraph(
-                "VLAN preview is add-only: existing VLANs cannot be changed or removed. Reserved VLAN IDs are rejected.",
+                "Use the + Edit buttons in the Interfaces, VLANs, and Routing pages to stage changes, then generate a preview from this page.",
             ));
 
         let has_draft = !self.draft.hostname.read(cx).is_empty()
             || !self.draft.domain_name.read(cx).is_empty()
-            || !self.draft.name_servers.read(cx).is_empty()
-            || (!self.draft.vlan_id.read(cx).is_empty()
-                && !self.draft.vlan_name.read(cx).is_empty());
+            || !self.draft.name_servers.read(cx).is_empty();
 
         draft = draft.child(div().flex().justify_end().child(Self::action_button(
             if self.config.preview_loading {
@@ -3311,421 +3881,41 @@ impl ReefApp {
             interfaces.into_any_element(),
         ));
 
-        // Add interface form
-        if let Some(form) = &self.interface_edit {
-            let add_btn_label = if self.config.preview_loading {
-                "Adding…"
-            } else {
-                "Add interface"
-            };
-            layout = layout.child(panel(
-                "Add interface",
-                "Enter interface settings to add to the preview.",
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .w_full()
-                    .child(Self::field_block("Name", form.name.clone()))
-                    .child(Self::field_block("Description", form.description.clone()))
-                    .child(
-                        div()
-                            .flex()
-                            .gap_3()
-                            .w_full()
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .flex_1()
-                                    .gap_1()
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(palette::text_muted())
-                                            .child("Mode"),
-                                    )
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .gap_1()
-                                            .child(
-                                                div()
-                                                    .cursor_pointer()
-                                                    .px_2()
-                                                    .py_1()
-                                                    .rounded_md()
-                                                    .border_1()
-                                                    .border_color(
-                                                        if form.mode == InterfaceModeChoice::Routed
-                                                        {
-                                                            palette::accent()
-                                                        } else {
-                                                            palette::panel_border()
-                                                        },
-                                                    )
-                                                    .bg(
-                                                        if form.mode == InterfaceModeChoice::Routed
-                                                        {
-                                                            palette::selection()
-                                                        } else {
-                                                            palette::panel()
-                                                        },
-                                                    )
-                                                    .child("Routed")
-                                                    .id(ElementId::Name("iface-mode-routed".into()))
-                                                    .on_click(cx.listener(
-                                                        move |this, _, _, cx| {
-                                                            if let Some(f) =
-                                                                this.interface_edit.as_mut()
-                                                            {
-                                                                f.mode =
-                                                                    InterfaceModeChoice::Routed;
-                                                            }
-                                                            cx.notify();
-                                                        },
-                                                    )),
-                                            )
-                                            .child(
-                                                div()
-                                                    .cursor_pointer()
-                                                    .px_2()
-                                                    .py_1()
-                                                    .rounded_md()
-                                                    .border_1()
-                                                    .border_color(
-                                                        if form.mode == InterfaceModeChoice::Access
-                                                        {
-                                                            palette::accent()
-                                                        } else {
-                                                            palette::panel_border()
-                                                        },
-                                                    )
-                                                    .bg(
-                                                        if form.mode == InterfaceModeChoice::Access
-                                                        {
-                                                            palette::selection()
-                                                        } else {
-                                                            palette::panel()
-                                                        },
-                                                    )
-                                                    .child("Access")
-                                                    .id(ElementId::Name("iface-mode-access".into()))
-                                                    .on_click(cx.listener(
-                                                        move |this, _, _, cx| {
-                                                            if let Some(f) =
-                                                                this.interface_edit.as_mut()
-                                                            {
-                                                                f.mode =
-                                                                    InterfaceModeChoice::Access;
-                                                            }
-                                                            cx.notify();
-                                                        },
-                                                    )),
-                                            ),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .flex_1()
-                                    .gap_1()
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(palette::text_muted())
-                                            .child("Shutdown"),
-                                    )
-                                    .child(
-                                        div()
-                                            .cursor_pointer()
-                                            .px_2()
-                                            .py_1()
-                                            .rounded_md()
-                                            .border_1()
-                                            .border_color(if form.shutdown {
-                                                palette::accent()
-                                            } else {
-                                                palette::panel_border()
-                                            })
-                                            .bg(if form.shutdown {
-                                                palette::accent_dim()
-                                            } else {
-                                                palette::input_bg()
-                                            })
-                                            .child(if form.shutdown { "✓" } else { "" })
-                                            .text_xs()
-                                            .text_color(palette::accent_strong())
-                                            .id(ElementId::Name("iface-shutdown".into()))
-                                            .on_click(cx.listener(move |this, _, _, cx| {
-                                                if let Some(f) = this.interface_edit.as_mut() {
-                                                    f.shutdown = !f.shutdown;
-                                                }
-                                                cx.notify();
-                                            })),
-                                    ),
-                            ),
-                    )
-                    .child(Self::field_block(
-                        "Access VLAN ID",
-                        form.access_vlan.clone(),
-                    ))
-                    .child(Self::field_block("IPv4 address", form.ipv4_address.clone()))
-                    .child(Self::field_block(
-                        "Prefix length",
-                        form.ipv4_prefix_len.clone(),
-                    ))
-                    .child(
-                        div()
-                            .flex()
-                            .justify_end()
-                            .gap_2()
-                            .child(Self::action_button(
-                                "Cancel",
-                                true,
-                                false,
-                                cx,
-                                |this, cx| {
-                                    this.interface_edit = None;
-                                    cx.notify();
-                                },
-                            ))
-                            .child(Self::action_button(
-                                add_btn_label,
-                                !form.name.read(cx).is_empty() && !self.config.preview_loading,
-                                false,
-                                cx,
-                                ReefApp::edit_interface_submit,
-                            )),
-                    )
-                    .into_any_element(),
-            ));
-        } else {
-            layout = layout.child(div().flex().justify_end().child(Self::action_button(
-                "+ Add interface",
-                true,
-                false,
-                cx,
-                |this, cx| {
-                    this.interface_edit = Some(InterfaceEditForm {
-                        name: field(cx, "GigabitEthernet1/0/1", false, ""),
-                        description: field(cx, "Interface description", false, ""),
-                        enabled: true,
-                        mode: InterfaceModeChoice::Routed,
-                        access_vlan: field(cx, "10", false, ""),
-                        ipv4_address: field(cx, "10.0.0.1", false, ""),
-                        ipv4_prefix_len: field(cx, "24", false, ""),
-                        shutdown: false,
-                    });
-                    cx.notify();
-                },
-            )));
-        }
-
-        let mut vlans = div().flex().flex_col().gap_1().w_full();
-        for vlan in &config.vlans {
-            vlans = vlans.child(config_list_row(vec![
-                vlan.id.to_string(),
-                if vlan.name.is_empty() {
-                    "Unnamed".to_string()
-                } else {
-                    vlan.name.clone()
-                },
-                if vlan.enabled {
-                    "Enabled".to_string()
-                } else {
-                    "Shutdown".to_string()
-                },
-            ]));
-        }
-        if config.vlans.is_empty() {
-            vlans = vlans.child(paragraph("No VLAN configuration parsed."));
-        }
-
-        let mut routes = div().flex().flex_col().gap_1().w_full();
-        for route in &config.static_routes {
-            routes = routes.child(config_list_row(vec![route.clone()]));
-        }
-        if config.static_routes.is_empty() {
-            routes = routes.child(paragraph("No static routes configured."));
-        }
-
         layout = layout.child(
             div()
                 .flex()
                 .flex_wrap()
                 .gap_4()
                 .w_full()
-                .child(panel(
-                    "VLAN configuration",
-                    &format!("{} configured VLANs", config.vlans.len()),
-                    vlans.into_any_element(),
+                .child(Self::action_button(
+                    "+ Add interface",
+                    true,
+                    false,
+                    cx,
+                    |this, cx| {
+                        this.open_interface_modal(None, cx);
+                    },
                 ))
-                .child(panel(
-                    "Static routes",
-                    &format!("{} configured routes", config.static_routes.len()),
-                    routes.into_any_element(),
-                )),
+                .child(Self::action_button(
+                    "+ Add VLAN",
+                    true,
+                    false,
+                    cx,
+                    |this, cx| {
+                        this.open_vlan_modal(None, cx);
+                    },
+                ))
+                .child(Self::action_button(
+                    "+ Add route",
+                    true,
+                    false,
+                    cx,
+                    |this, cx| {
+                        this.open_route_modal(None, cx);
+                    },
+                ))
+                .into_any_element(),
         );
-
-        // Add VLAN form
-        if let Some(form) = &self.vlan_edit {
-            layout = layout.child(panel(
-                "Add VLAN",
-                "Enter VLAN settings to add to the preview.",
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .w_full()
-                    .child(Self::field_block("VLAN ID", form.id.clone()))
-                    .child(Self::field_block("VLAN name", form.name.clone()))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .size(px(16.))
-                                    .rounded_md()
-                                    .border_1()
-                                    .border_color(if form.enabled {
-                                        palette::accent()
-                                    } else {
-                                        palette::input_border()
-                                    })
-                                    .bg(if form.enabled {
-                                        palette::accent_dim()
-                                    } else {
-                                        palette::input_bg()
-                                    })
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .text_xs()
-                                    .text_color(palette::accent_strong())
-                                    .child(if form.enabled { "Enabled" } else { "Disabled" }),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(palette::text_muted())
-                                    .child("Enabled"),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .justify_end()
-                            .gap_2()
-                            .child(Self::action_button(
-                                "Cancel",
-                                true,
-                                false,
-                                cx,
-                                |this, cx| {
-                                    this.vlan_edit = None;
-                                    cx.notify();
-                                },
-                            ))
-                            .child(Self::action_button(
-                                if self.config.preview_loading {
-                                    "Adding…"
-                                } else {
-                                    "Add VLAN"
-                                },
-                                !form.id.read(cx).is_empty()
-                                    && !form.name.read(cx).is_empty()
-                                    && !self.config.preview_loading,
-                                false,
-                                cx,
-                                ReefApp::edit_vlan_submit,
-                            )),
-                    )
-                    .into_any_element(),
-            ));
-        } else {
-            layout = layout.child(div().flex().justify_end().child(Self::action_button(
-                "+ Add VLAN",
-                true,
-                false,
-                cx,
-                |this, cx| {
-                    this.vlan_edit = Some(VlanEditForm {
-                        id: field(cx, "10", false, ""),
-                        name: field(cx, "USERS", false, ""),
-                        enabled: true,
-                    });
-                    cx.notify();
-                },
-            )));
-        }
-
-        // Add Route form
-        if let Some(form) = &self.route_edit {
-            layout = layout.child(panel(
-                "Add static route",
-                "Enter route settings to add to the preview.",
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_3()
-                    .w_full()
-                    .child(Self::field_block("Prefix (CIDR)", form.prefix.clone()))
-                    .child(Self::field_block("Next hop", form.next_hop.clone()))
-                    .child(Self::field_block(
-                        "Admin distance",
-                        form.admin_distance.clone(),
-                    ))
-                    .child(
-                        div()
-                            .flex()
-                            .justify_end()
-                            .gap_2()
-                            .child(Self::action_button(
-                                "Cancel",
-                                true,
-                                false,
-                                cx,
-                                |this, cx| {
-                                    this.route_edit = None;
-                                    cx.notify();
-                                },
-                            ))
-                            .child(Self::action_button(
-                                if self.config.preview_loading {
-                                    "Adding…"
-                                } else {
-                                    "Add route"
-                                },
-                                !form.prefix.read(cx).is_empty()
-                                    && !form.next_hop.read(cx).is_empty()
-                                    && !self.config.preview_loading,
-                                false,
-                                cx,
-                                ReefApp::edit_route_submit,
-                            )),
-                    )
-                    .into_any_element(),
-            ));
-        } else {
-            layout = layout.child(div().flex().justify_end().child(Self::action_button(
-                "+ Add route",
-                true,
-                false,
-                cx,
-                |this, cx| {
-                    this.route_edit = Some(RouteEditForm {
-                        prefix: field(cx, "192.0.2.0/24", false, ""),
-                        next_hop: field(cx, "10.0.0.1", false, ""),
-                        admin_distance: field(cx, "", false, ""),
-                    });
-                    cx.notify();
-                },
-            )));
-        }
 
         let mut other = div().flex().flex_wrap().gap_3().w_full();
         other = other
@@ -5023,13 +5213,25 @@ impl ReefApp {
 }
 
 impl Render for ReefApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Register global Escape handler once so it dismisses the active modal
+        // even when a text field or other element has focus.
+        if !self.escape_bound {
+            cx.on_action(
+                TypeId::of::<DismissModal>(),
+                window,
+                |this, _action, _phase, _window, cx| {
+                    let _ = _window;
+                    this.dismiss_modal(cx);
+                },
+            );
+            self.escape_bound = true;
+        }
+
         let body = self.section_body(cx);
         let sidebar = self.sidebar(cx);
         let topbar = self.topbar(cx);
-        let heading = self.page_heading(cx);
-
-        let weak = cx.entity().downgrade();
+        let heading = self.page_heading(window, cx);
 
         let mut toasts_content = div().flex().flex_col().gap_2().w_full();
         for toast in &self.toasts {
@@ -5084,7 +5286,7 @@ impl Render for ReefApp {
             .gap_2()
             .child(toasts_content);
 
-        div()
+        let mut content = div()
             .size_full()
             .flex()
             .flex_row()
@@ -5115,8 +5317,981 @@ impl Render for ReefApp {
                             .child(safety_banner())
                             .child(body),
                     ),
+            );
+
+        // Modal backdrop + dialog rendered at root, above all content.
+        if let Some(modal) = &self.modal {
+            let dirty = self.modal_is_dirty(cx);
+            let error = self.modal_error.clone();
+            let pending = self.pending_modal.clone();
+            let content_scroll = &self.content_scroll;
+            let modal_panel = self.modal_panel(
+                modal.clone(),
+                dirty,
+                error.as_deref(),
+                pending.is_some(),
+                window,
+                cx,
+            );
+            let weak = cx.entity().downgrade();
+            content = content.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .bg(palette::backdrop())
+                    .occlude()
+                    .on_mouse_down_out(move |event, window, app_cx| {
+                        let _ = event;
+                        let _ = window;
+                        weak.update(app_cx, |this, cx| {
+                            this.request_modal_close(cx);
+                        })
+                        .ok();
+                    })
+                    .child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .p_4()
+                            .child(modal_panel),
+                    ),
+            );
+        }
+
+        content.child(toasts)
+    }
+}
+
+impl ReefApp {
+    fn modal_panel(
+        &mut self,
+        modal: Modal,
+        dirty: bool,
+        error: Option<&str>,
+        has_pending: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        match modal {
+            Modal::Connection => self.connection_panel(window, cx),
+            Modal::Profile => self.profile_panel(window, cx),
+            Modal::Interface => self.interface_panel(window, cx),
+            Modal::Vlan => self.vlan_panel(window, cx),
+            Modal::Route => self.route_panel(window, cx),
+            Modal::SystemSettings => self.system_settings_panel(window, cx),
+            Modal::ConfirmDiscard => self.confirm_discard_panel(window, cx),
+            Modal::ConfirmApply => self.confirm_apply_panel(window, cx),
+            Modal::ConfirmRestore => self.confirm_restore_panel(window, cx),
+        };
+        let _ = (dirty, error, has_pending, window);
+        div().into_any_element()
+    }
+
+    fn connection_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(form) = self.connection.as_mut() else {
+            return div().into_any_element();
+        };
+        let profile = form.profile.clone();
+        let is_serial = profile.transport == ProfileTransport::Serial;
+        let error = form.error.clone();
+        let connecting = form.connecting;
+        let trust = form.trust_host_key;
+        let password = form.password.clone();
+        let enable_secret = form.enable_secret.clone();
+
+        let mut auth = div().flex().flex_col().gap_3().w_full();
+        if !is_serial {
+            auth = auth
+                .child(Self::field_block("Password", password))
+                .child(Self::field_block("Enable secret (optional)", enable_secret));
+        }
+        if let Some(error) = error {
+            let unknown_key = error.to_lowercase().contains("unknown host key");
+            auth = auth.child(error_panel(&error));
+            if unknown_key && profile.transport == ProfileTransport::Ssh {
+                auth = auth.child(checkbox_row(
+                    "Trust this SSH host key and save it for future connections",
+                    trust,
+                    cx,
+                ));
+            }
+        }
+        auth = auth
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .justify_end()
+                    .child(Self::action_button("Cancel", true, false, cx, |this, cx| {
+                        this.connection = None;
+                        this.close_modal();
+                        cx.notify();
+                    }))
+                    .child(Self::action_button(
+                        if connecting { "Connecting…" } else { "Connect" },
+                        !connecting,
+                        true,
+                        cx,
+                        ReefApp::connect_selected,
+                    )),
             )
-            .child(toasts)
+            .child(paragraph(
+                "Credentials are sent to the Rust session service for this connection only. They are not written to the profile.",
+            ));
+
+        self.modal_shell(
+            format!("Connect to {}", profile.name).into(),
+            format!("{} · {}", profile.host, transport_label(&profile.transport)).into(),
+            auth.into_any_element(),
+            vec![
+                (
+                    "Cancel".into(),
+                    false,
+                    false,
+                    Box::new(cx.listener(|this, _, _, cx| {
+                        this.connection = None;
+                        this.close_modal();
+                        cx.notify();
+                    })),
+                ),
+                (
+                    if connecting {
+                        "Connecting…"
+                    } else {
+                        "Connect"
+                    }
+                    .into(),
+                    !connecting,
+                    true,
+                    Box::new(cx.listener(
+                        |this: &mut ReefApp,
+                         _: &MouseDownEvent,
+                         _: &mut Window,
+                         cx: &mut Context<ReefApp>| {
+                            ReefApp::connect_selected(this, cx);
+                        },
+                    )),
+                ),
+            ],
+            cx,
+        )
+    }
+
+    fn profile_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let form = &self.profile_form;
+        let is_serial = form.transport == TransportChoice::Serial;
+        let error = form.error.clone();
+        let saving = form.saving;
+
+        let mut transport_buttons = div().flex().gap_2().w_full();
+        for choice in [
+            TransportChoice::Ssh,
+            TransportChoice::Telnet,
+            TransportChoice::Serial,
+        ] {
+            let active = form.transport == choice;
+            let mut button = div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .h(px(32.))
+                .px_3()
+                .rounded_md()
+                .text_xs()
+                .cursor_pointer()
+                .child(choice.label().to_string());
+            if active {
+                button = button
+                    .bg(palette::accent_dim())
+                    .text_color(palette::accent_strong())
+                    .font_weight(FontWeight::SEMIBOLD);
+            } else {
+                button = button
+                    .bg(palette::panel_alt())
+                    .text_color(palette::text_muted())
+                    .border_1()
+                    .border_color(palette::panel_border());
+            }
+            transport_buttons = transport_buttons.child(
+                button
+                    .id(ElementId::Name(choice.label().into()))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.select_transport(choice, cx);
+                    })),
+            );
+        }
+
+        let mut new_profile = div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .w_full()
+            .child(Self::field_block("Profile name", form.name.clone()))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .w_full()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(palette::text_muted())
+                            .child("Transport"),
+                    )
+                    .child(transport_buttons),
+            )
+            .child(Self::field_block(
+                if form.transport.is_serial() {
+                    "Serial port"
+                } else {
+                    "Host or IP address"
+                },
+                form.host.clone(),
+            ));
+
+        if !form.transport.is_serial() {
+            new_profile = new_profile
+                .child(Self::field_block("Port", form.port.clone()))
+                .child(Self::field_block("Username", form.username.clone()));
+        }
+        if let Some(error) = error {
+            new_profile = new_profile.child(error_panel(&error));
+        }
+        new_profile = new_profile.child(div().flex().justify_end().child(Self::action_button(
+            if saving { "Saving…" } else { "Save profile" },
+            !saving,
+            true,
+            cx,
+            ReefApp::save_profile,
+        )));
+
+        self.modal_shell(
+            "New connection profile".into(),
+            "Save a reusable device profile. Authentication secrets are requested separately when connecting.".into(),
+            new_profile.into_any_element(),
+            vec![
+                ("Cancel".into(), false, false, Box::new(cx.listener(|this, _, _, cx| {
+                    this.close_modal();
+                    cx.notify();
+                }))),
+                (
+                    "Save profile".into(),
+                    !saving,
+                    true,
+                    Box::new(cx.listener(|this: &mut ReefApp, _: &MouseDownEvent, _: &mut Window, cx: &mut Context<ReefApp>| {
+                        ReefApp::save_profile(this, cx);
+                    }))),
+            ],
+            cx,
+        )
+    }
+
+    fn interface_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(form) = self.interface_edit.as_mut() else {
+            return div().into_any_element();
+        };
+        let editing = form.editing;
+        let enabled = form.enabled;
+        let mode = form.mode;
+        let title = if editing {
+            "Edit interface".to_string()
+        } else {
+            "Add interface".to_string()
+        };
+        let subtitle = if editing {
+            "Change the interface's configuration in the preview.".to_string()
+        } else {
+            "Enter interface settings to add to the preview.".to_string()
+        };
+        let add_btn_label = if self.config.preview_loading {
+            "Applying…"
+        } else if editing {
+            "Save changes"
+        } else {
+            "Add interface"
+        };
+        let name = field_owned(
+            cx,
+            "GigabitEthernet1/0/1",
+            false,
+            &form.name.read(cx).text(),
+        );
+        let description = field_owned(
+            cx,
+            "Interface description",
+            false,
+            &form.description.read(cx).text(),
+        );
+        let access_vlan = field_owned(cx, "10", false, &form.access_vlan.read(cx).text());
+        let ipv4_address = field_owned(cx, "10.0.0.1", false, &form.ipv4_address.read(cx).text());
+        let ipv4_prefix_len = field_owned(cx, "24", false, &form.ipv4_prefix_len.read(cx).text());
+        // Drop the mutable borrow so self can be borrowed again for modal_shell
+        let _ = form;
+
+        let mut mode_pills = div().flex().gap_1().w_full();
+        for (choice, label) in [
+            (InterfaceModeChoice::Routed, "Routed (L3)"),
+            (InterfaceModeChoice::Access, "Access (L2)"),
+            (InterfaceModeChoice::Trunk, "Trunk"),
+            (InterfaceModeChoice::L2, "L2 (switch)"),
+        ] {
+            let active = mode == choice;
+            let mut pill = div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .cursor_pointer()
+                .text_xs()
+                .child(label.to_string());
+            if active {
+                pill = pill
+                    .bg(palette::selection())
+                    .border_1()
+                    .border_color(palette::accent_dim());
+            } else {
+                pill = pill
+                    .bg(palette::panel())
+                    .border_1()
+                    .border_color(palette::panel_border())
+                    .text_color(palette::text_muted());
+            }
+            mode_pills = mode_pills.child(pill.on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    if let Some(f) = this.interface_edit.as_mut() {
+                        f.mode = choice;
+                    }
+                    cx.notify();
+                }),
+            ));
+        }
+
+        let body = div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .w_full()
+            .child(Self::field_block("Name", name.clone()))
+            .child(Self::field_block("Description", description.clone()))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .w_full()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(palette::text_muted())
+                            .child("Mode"),
+                    )
+                    .child(mode_pills),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .w_full()
+                    .child(ui::toggle(
+                        "iface-enabled",
+                        enabled,
+                        "Administratively enabled",
+                        cx.listener(move |this, _, _, cx| {
+                            if let Some(f) = this.interface_edit.as_mut() {
+                                f.enabled = !f.enabled;
+                            }
+                            cx.notify();
+                        }),
+                    ))
+                    .child(div().flex_1()),
+            )
+            .child(Self::field_block("Access VLAN ID", access_vlan.clone()))
+            .child(Self::field_block("IPv4 address", ipv4_address.clone()))
+            .child(Self::field_block("Prefix length", ipv4_prefix_len.clone()))
+            .child(
+                div()
+                    .flex()
+                    .justify_end()
+                    .gap_2()
+                    .child(Self::action_button(
+                        "Cancel",
+                        true,
+                        false,
+                        cx,
+                        |this, cx| {
+                            this.interface_edit = None;
+                            this.close_modal();
+                            cx.notify();
+                        },
+                    ))
+                    .child(Self::action_button(
+                        add_btn_label.clone(),
+                        !name.read(cx).is_empty() && !self.config.preview_loading,
+                        true,
+                        cx,
+                        ReefApp::edit_interface_submit,
+                    )),
+            );
+
+        self.modal_shell(
+            title.into(),
+            subtitle.into(),
+            body.into_any_element(),
+            vec![
+                (
+                    "Cancel".into(),
+                    true,
+                    false,
+                    Box::new(cx.listener(|this, _, _, cx| {
+                        this.interface_edit = None;
+                        this.close_modal();
+                        cx.notify();
+                    })),
+                ),
+                (
+                    add_btn_label.into(),
+                    !name.read(cx).is_empty() && !self.config.preview_loading,
+                    true,
+                    Box::new(cx.listener(
+                        |this: &mut ReefApp,
+                         _: &MouseDownEvent,
+                         _: &mut Window,
+                         cx: &mut Context<ReefApp>| {
+                            ReefApp::edit_interface_submit(this, cx);
+                        },
+                    )),
+                ),
+            ],
+            cx,
+        )
+    }
+
+    fn vlan_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(form) = self.vlan_edit.as_mut() else {
+            return div().into_any_element();
+        };
+        let editing = form.editing;
+        let enabled = form.enabled;
+        let title = if editing {
+            "Edit VLAN".to_string()
+        } else {
+            "Add VLAN".to_string()
+        };
+        let subtitle = if editing {
+            "Change the VLAN's name or administrative state.".to_string()
+        } else {
+            "Enter VLAN settings to add to the preview.".to_string()
+        };
+        let vid = form.id.read(cx).text();
+        let vname = form.name.read(cx).text();
+        let _ = form;
+
+        let body = div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .w_full()
+            .child(Self::field_block(
+                "VLAN ID",
+                field_owned(cx, "10", false, &vid),
+            ))
+            .child(Self::field_block(
+                "VLAN name",
+                field_owned(cx, "USERS", false, &vname),
+            ))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .w_full()
+                    .child(ui::toggle(
+                        "vlan-enabled",
+                        enabled,
+                        "VLAN enabled",
+                        cx.listener(move |this, _, _, cx| {
+                            if let Some(f) = this.vlan_edit.as_mut() {
+                                f.enabled = !f.enabled;
+                            }
+                            cx.notify();
+                        }),
+                    ))
+                    .child(div().flex_1()),
+            )
+            .child(
+                div()
+                    .flex()
+                    .justify_end()
+                    .gap_2()
+                    .child(Self::action_button(
+                        "Cancel",
+                        true,
+                        false,
+                        cx,
+                        |this, cx| {
+                            this.vlan_edit = None;
+                            this.close_modal();
+                            cx.notify();
+                        },
+                    ))
+                    .child(Self::action_button(
+                        if self.config.preview_loading {
+                            "Applying…"
+                        } else {
+                            "Save VLAN"
+                        },
+                        !vid.is_empty() && !vname.is_empty() && !self.config.preview_loading,
+                        true,
+                        cx,
+                        ReefApp::edit_vlan_submit,
+                    )),
+            );
+
+        self.modal_shell(
+            title.into(),
+            subtitle.into(),
+            body.into_any_element(),
+            vec![
+                (
+                    "Cancel".into(),
+                    true,
+                    false,
+                    Box::new(cx.listener(|this, _, _, cx| {
+                        this.vlan_edit = None;
+                        this.close_modal();
+                        cx.notify();
+                    })),
+                ),
+                (
+                    "Save VLAN".into(),
+                    !vid.is_empty() && !vname.is_empty() && !self.config.preview_loading,
+                    true,
+                    Box::new(cx.listener(
+                        |this: &mut ReefApp,
+                         _: &MouseDownEvent,
+                         _: &mut Window,
+                         cx: &mut Context<ReefApp>| {
+                            ReefApp::edit_vlan_submit(this, cx);
+                        },
+                    )),
+                ),
+            ],
+            cx,
+        )
+    }
+
+    fn route_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(form) = self.route_edit.as_mut() else {
+            return div().into_any_element();
+        };
+        let editing = form.editing;
+        let title = if editing {
+            "Edit route".to_string()
+        } else {
+            "Add static route".to_string()
+        };
+        let subtitle = if editing {
+            "Replace the route's next hop or administrative distance.".to_string()
+        } else {
+            "Enter route settings to add to the preview.".to_string()
+        };
+        let prefix = form.prefix.read(cx).text();
+        let next_hop = form.next_hop.read(cx).text();
+        let admin_distance = form.admin_distance.read(cx).text();
+        let _ = form;
+
+        let body = div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .w_full()
+            .child(Self::field_block(
+                "Prefix (CIDR)",
+                field_owned(cx, "192.0.2.0/24", false, &prefix),
+            ))
+            .child(Self::field_block(
+                "Next hop",
+                field_owned(cx, "10.0.0.1", false, &next_hop),
+            ))
+            .child(Self::field_block(
+                "Admin distance",
+                field_owned(cx, "1", false, &admin_distance),
+            ))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(palette::text_faint())
+                    .child("Prefix example: 192.0.2.0/24. Admin distance defaults to 1."),
+            )
+            .child(
+                div()
+                    .flex()
+                    .justify_end()
+                    .gap_2()
+                    .child(Self::action_button(
+                        "Cancel",
+                        true,
+                        false,
+                        cx,
+                        |this, cx| {
+                            this.route_edit = None;
+                            this.close_modal();
+                            cx.notify();
+                        },
+                    ))
+                    .child(Self::action_button(
+                        if self.config.preview_loading {
+                            "Applying…"
+                        } else {
+                            "Save route"
+                        },
+                        !prefix.is_empty() && !next_hop.is_empty() && !self.config.preview_loading,
+                        true,
+                        cx,
+                        ReefApp::edit_route_submit,
+                    )),
+            );
+
+        self.modal_shell(
+            title.into(),
+            subtitle.into(),
+            body.into_any_element(),
+            vec![
+                (
+                    "Cancel".into(),
+                    true,
+                    false,
+                    Box::new(cx.listener(|this, _, _, cx| {
+                        this.route_edit = None;
+                        this.close_modal();
+                        cx.notify();
+                    })),
+                ),
+                (
+                    "Save route".into(),
+                    !prefix.is_empty() && !next_hop.is_empty() && !self.config.preview_loading,
+                    true,
+                    Box::new(cx.listener(
+                        |this: &mut ReefApp,
+                         _: &MouseDownEvent,
+                         _: &mut Window,
+                         cx: &mut Context<ReefApp>| {
+                            ReefApp::edit_route_submit(this, cx);
+                        },
+                    )),
+                ),
+            ],
+            cx,
+        )
+    }
+
+    fn system_settings_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let error = self.modal_error.clone();
+        let body = div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .w_full()
+            .child(Self::field_block("Hostname", self.draft.hostname.clone()))
+            .child(Self::field_block("Domain name", self.draft.domain_name.clone()))
+            .child(Self::field_block(
+                "Name servers (comma separated)",
+                self.draft.name_servers.clone(),
+            ))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(palette::text_faint())
+                    .child("Set at least one field to generate a preview. Blank fields preserve current values."),
+            )
+            .child(
+                div()
+                    .flex()
+                    .justify_end()
+                    .gap_2()
+                    .child(Self::action_button(
+                        "Cancel",
+                        true,
+                        false,
+                        cx,
+                        |this, cx| {
+                            this.close_modal();
+                            cx.notify();
+                        },
+                    ))
+                    .child(Self::action_button(
+                        if self.config.preview_loading {
+                            "Generating…"
+                        } else {
+                            "Generate preview"
+                        },
+                        !self.config.preview_loading,
+                        true,
+                        cx,
+                        ReefApp::preview_configuration,
+                    )),
+            );
+
+        let mut shell = self.modal_shell(
+            "System settings".into(),
+            "Preview hostname, domain, and name server changes before applying.".into(),
+            body.into_any_element(),
+            vec![
+                (
+                    "Cancel".into(),
+                    true,
+                    false,
+                    Box::new(cx.listener(|this, _, _, cx| {
+                        this.close_modal();
+                        cx.notify();
+                    })),
+                ),
+                (
+                    "Generate preview".into(),
+                    !self.config.preview_loading,
+                    true,
+                    Box::new(cx.listener(
+                        |this: &mut ReefApp,
+                         _: &MouseDownEvent,
+                         _: &mut Window,
+                         cx: &mut Context<ReefApp>| {
+                            ReefApp::preview_configuration(this, cx);
+                        },
+                    )),
+                ),
+            ],
+            cx,
+        );
+        if let Some(error) = error {
+            shell = div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .w_full()
+                .child(error_panel(&error))
+                .child(shell)
+                .into_any_element();
+        }
+        shell
+    }
+
+    fn confirm_discard_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        self.modal_shell(
+            "Discard unsaved changes?".into(),
+            "You have unsaved changes in this dialog. Discard them and close?".into(),
+            div()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .w_full()
+                .child(
+                    div()
+                        .flex()
+                        .justify_end()
+                        .gap_2()
+                        .child(Self::action_button(
+                            "Keep editing",
+                            true,
+                            false,
+                            cx,
+                            |this, cx| {
+                                this.resume_modal(cx);
+                                cx.notify();
+                            },
+                        ))
+                        .child(Self::action_button(
+                            "Discard",
+                            true,
+                            true,
+                            cx,
+                            |this, cx| {
+                                this.discard_modal(cx);
+                                cx.notify();
+                            },
+                        )),
+                )
+                .into_any_element(),
+            vec![],
+            cx,
+        )
+    }
+
+    fn confirm_apply_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let preview = self.config.preview.as_ref();
+        let command_count = preview.map(|p| p.commands.len()).unwrap_or(0);
+        self.modal_shell(
+            "Apply configuration?".into(),
+            format!(
+                "This will send {} command(s) to the device. Review the preview on the Configuration page first.",
+                command_count
+            ).into(),
+            div()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .w_full()
+                .child(
+                    div()
+                        .flex()
+                        .justify_end()
+                        .gap_2()
+                        .child(Self::action_button(
+                            "Cancel",
+                            true,
+                            false,
+                            cx,
+                            |this, cx| {
+                                this.close_modal();
+                                cx.notify();
+                            },
+                        ))
+                        .child(Self::action_button(
+                            "Apply",
+                            !self.config.apply_loading,
+                            true,
+                            cx,
+                            ReefApp::apply_configuration,
+                        )),
+                )
+                .into_any_element(),
+            vec![],
+            cx,
+        )
+    }
+
+    fn confirm_restore_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let backup_id = self.pending_restore.clone().unwrap_or_default();
+        self.modal_shell(
+            "Restore configuration?".into(),
+            format!(
+                "This will replace the running configuration with backup {}. This cannot be undone.",
+                backup_id
+            ).into(),
+            div()
+                .flex()
+                .flex_col()
+                .gap_3()
+                .w_full()
+                .child(
+                    div()
+                        .flex()
+                        .justify_end()
+                        .gap_2()
+                        .child(Self::action_button(
+                            "Cancel",
+                            true,
+                            false,
+                            cx,
+                            |this, cx| {
+                                this.pending_restore = None;
+                                this.close_modal();
+                                cx.notify();
+                            },
+                        ))
+                        .child(Self::action_button(
+                            "Restore",
+                            !self.config.apply_loading,
+                            true,
+                            cx,
+                            |this, cx| {
+                                if let Some(id) = this.pending_restore.take() {
+                                    this.restore_configuration(id, cx);
+                                }
+                                this.close_modal();
+                                cx.notify();
+                            },
+                        )),
+                )
+                .into_any_element(),
+            vec![],
+            cx,
+        )
+    }
+
+    fn modal_shell(
+        &mut self,
+        title: SharedString,
+        subtitle: SharedString,
+        body: AnyElement,
+        actions: Vec<(
+            SharedString,
+            bool,
+            bool,
+            Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App)>,
+        )>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let mut actions_row = div().flex().gap_2().w_full();
+        for (label, enabled, _primary, on_click) in actions {
+            let mut button = div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .h(px(34.))
+                .px_3()
+                .rounded_md()
+                .text_sm()
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(label);
+            if enabled {
+                button = button
+                    .bg(palette::accent())
+                    .text_color(palette::background())
+                    .cursor_pointer()
+                    .hover(|style| style.opacity(0.85))
+                    .on_mouse_down(MouseButton::Left, on_click);
+            } else {
+                button = button.opacity(0.45);
+            }
+            actions_row = actions_row.child(button);
+        }
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .w_full()
+            .max_w(px(520.))
+            .p_5()
+            .rounded_lg()
+            .border_1()
+            .border_color(palette::panel_border())
+            .bg(palette::panel())
+            .shadow_lg()
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_base()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(palette::text())
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .line_height(px(19.))
+                            .text_color(palette::text_muted())
+                            .child(subtitle),
+                    ),
+            )
+            .child(div().h(px(1.)).bg(palette::panel_border()))
+            .child(body)
+            .child(actions_row)
+            .into_any_element()
     }
 }
 
@@ -5158,6 +6333,19 @@ fn field<T: 'static>(
     placeholder: &'static str,
     masked: bool,
     initial: &'static str,
+) -> Entity<TextField> {
+    let field = cx.new(|cx| TextField::new(cx, placeholder, masked));
+    if !initial.is_empty() {
+        field.update(cx, |field, cx| field.set_content(initial, cx));
+    }
+    field
+}
+
+fn field_owned(
+    cx: &mut Context<ReefApp>,
+    placeholder: &'static str,
+    masked: bool,
+    initial: &str,
 ) -> Entity<TextField> {
     let field = cx.new(|cx| TextField::new(cx, placeholder, masked));
     if !initial.is_empty() {

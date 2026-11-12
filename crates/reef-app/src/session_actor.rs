@@ -57,13 +57,14 @@ pub struct ConfigurationSnapshot {
     pub warnings: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfiguredInterface {
     pub name: String,
     pub description: Option<String>,
     pub enabled: bool,
     pub mode: String,
+    pub access_vlan: Option<u16>,
     pub ipv4: Option<String>,
     pub mtu: Option<u16>,
 }
@@ -166,6 +167,10 @@ pub struct ConfigurationDraft {
 pub struct AddVlanDraft {
     pub id: u16,
     pub name: String,
+    /// Desired administrative state. `None` preserves the existing state when
+    /// the VLAN already exists, and defaults to enabled for new VLANs.
+    #[serde(default)]
+    pub enabled: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -700,14 +705,7 @@ fn normalize_name_server(value: &str) -> Result<String, String> {
         .map_err(|_| format!("invalid name-server IP address: {value}"))
 }
 
-fn validate_vlan_draft(id: u16, name: &str) -> Result<String, String> {
-    let valid_id = (2..=1001).contains(&id) || (1006..=4094).contains(&id);
-    if !valid_id {
-        return Err(format!(
-            "VLAN ID {id} is reserved or outside the supported range (2-1001, 1006-4094)"
-        ));
-    }
-
+fn validate_vlan_name(name: &str) -> Result<String, String> {
     let name = name.trim();
     if name.is_empty()
         || name.len() > 32
@@ -721,6 +719,21 @@ fn validate_vlan_draft(id: u16, name: &str) -> Result<String, String> {
     }
 
     Ok(name.to_string())
+}
+
+fn validate_vlan_id(id: u16) -> Result<(), String> {
+    let valid_id = (2..=1001).contains(&id) || (1006..=4094).contains(&id);
+    if !valid_id {
+        return Err(format!(
+            "VLAN ID {id} is reserved or outside the supported range (2-1001, 1006-4094)"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_vlan_draft(id: u16, name: &str) -> Result<String, String> {
+    validate_vlan_id(id)?;
+    validate_vlan_name(name)
 }
 
 async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
@@ -842,6 +855,7 @@ async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
                                     description: interface.description,
                                     enabled: interface.enabled,
                                     mode: format!("{:?}", interface.mode),
+                                    access_vlan: interface.access_vlan,
                                     ipv4: interface.ipv4.map(|address| {
                                         format!("{}/{}", address.address, address.prefix_len)
                                     }),
@@ -976,27 +990,34 @@ async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
 
                     let mut requested_vlan_ids = std::collections::HashSet::new();
                     for vlan in draft.add_vlans {
-                        let name = validate_vlan_draft(vlan.id, &vlan.name)?;
                         if !requested_vlan_ids.insert(vlan.id) {
                             return Err(format!(
                                 "VLAN ID {} appears more than once in the draft",
                                 vlan.id
                             ));
                         }
-                        if desired.vlans.contains_key(&vlan.id) {
-                            return Err(format!(
-                                "VLAN {} already exists; this preview only supports adding new VLANs",
-                                vlan.id
-                            ));
+                        match desired.vlans.get_mut(&vlan.id) {
+                            Some(existing) => {
+                                // Existing VLANs can be renamed or suspended.
+                                // The ID itself is the identity of the VLAN and
+                                // cannot be changed by this draft.
+                                existing.name = validate_vlan_name(&vlan.name)?;
+                                if let Some(enabled) = vlan.enabled {
+                                    existing.enabled = enabled;
+                                }
+                            }
+                            None => {
+                                let name = validate_vlan_draft(vlan.id, &vlan.name)?;
+                                desired.vlans.insert(
+                                    vlan.id,
+                                    VlanConfig {
+                                        id: vlan.id,
+                                        name,
+                                        enabled: vlan.enabled.unwrap_or(true),
+                                    },
+                                );
+                            }
                         }
-                        desired.vlans.insert(
-                            vlan.id,
-                            VlanConfig {
-                                id: vlan.id,
-                                name,
-                                enabled: true,
-                            },
-                        );
                     }
                     for vlan_id in &draft.remove_vlan_ids {
                         desired.vlans.remove(vlan_id);
@@ -1015,13 +1036,12 @@ async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
                         if name.is_empty() {
                             return Err("interface name cannot be empty".to_string());
                         }
-                        let mut iface = desired
-                            .interfaces
-                            .get(name)
-                            .cloned()
-                            .unwrap_or_else(|| InterfaceConfig {
-                                name: name.to_string(),
-                                ..Default::default()
+                        let mut iface =
+                            desired.interfaces.get(name).cloned().unwrap_or_else(|| {
+                                InterfaceConfig {
+                                    name: name.to_string(),
+                                    ..Default::default()
+                                }
                             });
                         if let Some(desc) = &iface_draft.description {
                             iface.description = Some(desc.clone());
@@ -1287,6 +1307,7 @@ mod tests {
                     description: None,
                     enabled: true,
                     mode: "Routed".to_string(),
+                    access_vlan: None,
                     ipv4: None,
                     mtu: None,
                 },
@@ -1295,6 +1316,7 @@ mod tests {
                     description: None,
                     enabled: true,
                     mode: "Routed".to_string(),
+                    access_vlan: None,
                     ipv4: None,
                     mtu: None,
                 },

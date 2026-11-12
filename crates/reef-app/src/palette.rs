@@ -73,3 +73,13 @@ pub fn terminal_bg() -> Hsla {
 pub fn selection() -> Hsla {
     color(0x1b332a)
 }
+
+/// Translucent scrim used behind modal dialogs. Content behind it remains
+/// visible but is clearly inactive.
+pub fn backdrop() -> Hsla {
+    wgpui::rgba(0x05100cd9).into()
+}
+
+pub fn hover() -> Hsla {
+    color(0x1d2e27)
+}
