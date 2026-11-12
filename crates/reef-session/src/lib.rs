@@ -8,6 +8,7 @@ mod config;
 mod error;
 mod manager;
 mod prompt;
+mod safety;
 mod serial;
 mod session;
 mod ssh;
@@ -22,11 +23,12 @@ pub use config::{ConnectionConfig, HostKeyPolicy};
 pub use error::Error;
 pub use manager::SessionManager;
 pub use prompt::{detect, PromptMode};
+pub use safety::{check_command, SafetyViolation};
 pub use serial::SerialTransport;
 pub use session::Session;
-pub use ssh::{HostKeyStatus, SshTransport};
+pub use ssh::{HostKeyStatus, KnownHostEntry, SshTransport};
 pub use telnet::TelnetTransport;
-pub use transport::TransportType;
+pub use transport::{DeviceTransport, TransportMetadata, TransportType};
 
 #[cfg(test)]
 mod tests {

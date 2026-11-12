@@ -1,0 +1,28 @@
+# Reef terminal session recording
+# run_id: 4188e0a3-6abb-433d-80f7-d73bfbb104a6
+# device_id: profile-1794185608938654100-11740
+# endpoint: COM5:0 (Serial)
+# username: admin
+# hostname: -
+# started_at: 2026-11-09T00:53:31.588Z
+# secrets: passwords, enable secrets, SNMP communities, tokens, and private keys are never recorded
+# note: output is captured at the backend; ANSI escape sequences are stripped for readability
+
+[2026-11-09T00:53:31.751Z] NOTE (62 bytes)
+transport established: Serial {"baud": "9600", "port": "COM5"}
+[2026-11-09T00:53:31.993Z] RX (53 bytes)
+please dont
+
+User Access Verification
+
+Password: 
+
+# recording stopped_at: 2026-11-09T00:53:32.059Z
+# duration_ms: 470
+# bytes: 619
+# parts: 1
+# input_chunks: 0
+# output_chunks: 1
+# redactions: 1
+# ansi_sequences_removed: 0
+# size_limit_reached: false

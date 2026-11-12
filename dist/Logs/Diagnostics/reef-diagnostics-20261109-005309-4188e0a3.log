@@ -1,0 +1,92 @@
+2026-11-09T00:53:09.693Z [INFO] [startup] Reef diagnostics initialized level=INFO portable=true version=0.1.0 writableFailures=0
+2026-11-09T00:53:09.697Z [INFO] [tracing] Starting Reef application
+2026-11-09T00:53:10.277Z [INFO] [startup] Reef environment captured environment={"appVersion":"0.1.0","osName":"Windows","osVersion":"Windows 11 Enterprise LTSC 2024","kernelVersion":"26100","architecture":"x86_64","hostName":"DESKTOP-LAJ6PJJ","logicalCpus":8,"totalMemoryBytes":17031778304,"executable":"D:\\Reef-USB\\reef.exe","workingDirectory":"D:\\Reef-USB","portableRoot":"D:\\Reef-USB","portable":true,"processId":11740,"debugBuild":false} sessionRecordingDefault=true startupConfigWritesEnabled=false
+2026-11-09T00:53:10.345Z [INFO] [startup] Reef desktop window starting sessionRecordingDefault=true startupConfigWritesEnabled=false version=0.1.0
+2026-11-09T00:53:31.601Z [INFO] [recording] Session recording started deviceId=profile-1794185608938654100-11740 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005331.588.log
+2026-11-09T00:53:31.601Z [INFO] [connection] Connecting to device deviceId=profile-1794185608938654100-11740 host=COM5 hostKeyPolicy=Reject port=0 timeoutMs=10000 transport=Serial username=admin
+2026-11-09T00:53:31.751Z [INFO] [connection] Transport established details={"baud":"9600","port":"COM5"} deviceId=profile-1794185608938654100-11740 durationMs=162 transport=Serial
+2026-11-09T00:53:32.059Z [ERROR] [authentication] Device login failed deviceId=profile-1794185608938654100-11740 error=authentication failed host=COM5
+2026-11-09T00:53:32.059Z [INFO] [recording] Session recording stopped bytes=821 deviceId=profile-1794185608938654100-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005331.588.log redactions=1 sizeLimitReached=false
+2026-11-09T00:53:47.935Z [INFO] [recording] Session recording stopped bytes=821 deviceId=profile-1794185608938654100-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005331.588.log redactions=1 sizeLimitReached=false
+2026-11-09T00:53:47.935Z [INFO] [session] Device session closed commands=0 deviceId=profile-1794185608938654100-11740 durationMs=null hostname=null transportError=null
+2026-11-09T00:53:47.958Z [INFO] [recording] Session recording started deviceId=profile-1794185608938654100-11740 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005347.957.log
+2026-11-09T00:53:47.959Z [INFO] [connection] Connecting to device deviceId=profile-1794185608938654100-11740 host=COM5 hostKeyPolicy=Reject port=0 timeoutMs=10000 transport=Serial username=admin
+2026-11-09T00:53:48.096Z [INFO] [connection] Transport established details={"baud":"9600","port":"COM5"} deviceId=profile-1794185608938654100-11740 durationMs=138 transport=Serial
+2026-11-09T00:53:48.306Z [ERROR] [authentication] Device login failed deviceId=profile-1794185608938654100-11740 error=authentication failed host=COM5
+2026-11-09T00:53:48.307Z [INFO] [recording] Session recording stopped bytes=783 deviceId=profile-1794185608938654100-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005347.957.log redactions=1 sizeLimitReached=false
+2026-11-09T00:54:19.015Z [INFO] [recording] Session recording started deviceId=profile-1794185647527190900-11740 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185647527190900-11740-005419.012.log
+2026-11-09T00:54:19.015Z [INFO] [connection] Connecting to device deviceId=profile-1794185647527190900-11740 host=10.80.24.190 hostKeyPolicy=Reject port=22 timeoutMs=10000 transport=Ssh username=netadmin
+2026-11-09T00:54:19.044Z [ERROR] [connection] Transport connection failed deviceId=profile-1794185647527190900-11740 durationMs=31 error=transport error: ssh handshake: [Session(-5)] Unable to exchange encryption keys
+2026-11-09T00:54:19.044Z [INFO] [recording] Session recording stopped bytes=632 deviceId=profile-1794185647527190900-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185647527190900-11740-005419.012.log redactions=0 sizeLimitReached=false
+2026-11-09T00:54:29.597Z [INFO] [recording] Session recording stopped bytes=632 deviceId=profile-1794185647527190900-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185647527190900-11740-005419.012.log redactions=0 sizeLimitReached=false
+2026-11-09T00:54:29.597Z [INFO] [session] Device session closed commands=0 deviceId=profile-1794185647527190900-11740 durationMs=null hostname=null transportError=null
+2026-11-09T00:54:29.620Z [INFO] [recording] Session recording started deviceId=profile-1794185647527190900-11740 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185647527190900-11740-005429.616.log
+2026-11-09T00:54:29.621Z [INFO] [connection] Connecting to device deviceId=profile-1794185647527190900-11740 host=10.80.24.190 hostKeyPolicy=Reject port=22 timeoutMs=10000 transport=Ssh username=netadmin
+2026-11-09T00:54:29.624Z [ERROR] [connection] Transport connection failed deviceId=profile-1794185647527190900-11740 durationMs=7 error=transport error: ssh handshake: [Session(-5)] Unable to exchange encryption keys
+2026-11-09T00:54:29.624Z [INFO] [recording] Session recording stopped bytes=631 deviceId=profile-1794185647527190900-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185647527190900-11740-005429.616.log redactions=0 sizeLimitReached=false
+2026-11-09T00:54:43.021Z [INFO] [recording] Session recording stopped bytes=783 deviceId=profile-1794185608938654100-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005347.957.log redactions=1 sizeLimitReached=false
+2026-11-09T00:54:43.021Z [INFO] [session] Device session closed commands=0 deviceId=profile-1794185608938654100-11740 durationMs=null hostname=null transportError=null
+2026-11-09T00:54:43.058Z [INFO] [recording] Session recording started deviceId=profile-1794185608938654100-11740 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005443.057.log
+2026-11-09T00:54:43.058Z [INFO] [connection] Connecting to device deviceId=profile-1794185608938654100-11740 host=COM5 hostKeyPolicy=Reject port=0 timeoutMs=10000 transport=Serial username=admin
+2026-11-09T00:54:43.215Z [INFO] [connection] Transport established details={"baud":"9600","port":"COM5"} deviceId=profile-1794185608938654100-11740 durationMs=158 transport=Serial
+2026-11-09T00:54:43.549Z [DEBUG] [terminal] Sending command bytes=19 command=terminal length 0 deviceId=profile-1794185608938654100-11740
+2026-11-09T00:54:46.590Z [WARN] [terminal] Command did not complete command=terminal length 0 deviceId=profile-1794185608938654100-11740 durationMs=3041 error=timeout
+2026-11-09T00:54:46.591Z [WARN] [session] Could not disable paging deviceId=profile-1794185608938654100-11740 error=timeout
+2026-11-09T00:54:46.591Z [INFO] [session] Device session ready deviceId=profile-1794185608938654100-11740 durationMs=3533 hostname=null mode=Unknown("") pagingDisabled=false privileged=false recording=true
+2026-11-09T00:55:52.673Z [INFO] [recording] Session recording stopped bytes=1138 deviceId=profile-1794185608938654100-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005443.057.log redactions=1 sizeLimitReached=false
+2026-11-09T00:55:52.673Z [INFO] [session] Device session closed commands=0 deviceId=profile-1794185608938654100-11740 durationMs=66081 hostname=null transportError=null
+2026-11-09T00:56:12.319Z [INFO] [recording] Session recording stopped bytes=1138 deviceId=profile-1794185608938654100-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005443.057.log redactions=1 sizeLimitReached=false
+2026-11-09T00:56:12.320Z [INFO] [session] Device session closed commands=0 deviceId=profile-1794185608938654100-11740 durationMs=null hostname=null transportError=null
+2026-11-09T00:56:12.345Z [INFO] [recording] Session recording started deviceId=profile-1794185608938654100-11740 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005612.344.log
+2026-11-09T00:56:12.345Z [INFO] [connection] Connecting to device deviceId=profile-1794185608938654100-11740 host=COM5 hostKeyPolicy=Reject port=0 timeoutMs=10000 transport=Serial username=admin
+2026-11-09T00:56:12.493Z [INFO] [connection] Transport established details={"baud":"9600","port":"COM5"} deviceId=profile-1794185608938654100-11740 durationMs=148 transport=Serial
+2026-11-09T00:56:12.815Z [DEBUG] [terminal] Sending command bytes=19 command=terminal length 0 deviceId=profile-1794185608938654100-11740
+2026-11-09T00:56:12.895Z [DEBUG] [performance] Command completed commands=1 deviceId=profile-1794185608938654100-11740 durationMs=80 outputBytes=33
+2026-11-09T00:56:12.895Z [INFO] [session] Device session ready deviceId=profile-1794185608938654100-11740 durationMs=550 hostname=Cisco mode=PrivilegedExec pagingDisabled=true privileged=true recording=true
+2026-11-09T00:56:12.895Z [DEBUG] [terminal] Sending command bytes=14 command=show version deviceId=profile-1794185608938654100-11740
+2026-11-09T00:56:17.007Z [DEBUG] [performance] Command completed commands=2 deviceId=profile-1794185608938654100-11740 durationMs=4112 outputBytes=3461
+2026-11-09T00:56:17.014Z [DEBUG] [terminal] Sending command bytes=16 command=show inventory deviceId=profile-1794185608938654100-11740
+2026-11-09T00:56:18.430Z [DEBUG] [performance] Command completed commands=3 deviceId=profile-1794185608938654100-11740 durationMs=1415 outputBytes=1205
+2026-11-09T00:56:18.430Z [DEBUG] [device] Device identified deviceId=profile-1794185608938654100-11740 durationMs=5534 hostname=Cisco iosxeVersion=16.09.08 platform="Chassis",
+2026-11-09T00:56:28.459Z [DEBUG] [terminal] Sending command bytes=21 command=show running-config deviceId=profile-1794185608938654100-11740
+2026-11-09T00:56:33.506Z [DEBUG] [performance] Command completed commands=4 deviceId=profile-1794185608938654100-11740 durationMs=5046 outputBytes=4297
+2026-11-09T00:56:45.403Z [DEBUG] [terminal] Sending command bytes=25 command=show ip interface brief deviceId=profile-1794185608938654100-11740
+2026-11-09T00:56:46.056Z [DEBUG] [performance] Command completed commands=5 deviceId=profile-1794185608938654100-11740 durationMs=652 outputBytes=531
+2026-11-09T00:56:46.056Z [DEBUG] [terminal] Sending command bytes=17 command=show vlan brief deviceId=profile-1794185608938654100-11740
+2026-11-09T00:56:46.569Z [DEBUG] [performance] Command completed commands=6 deviceId=profile-1794185608938654100-11740 durationMs=513 outputBytes=419
+2026-11-09T00:56:46.570Z [DEBUG] [terminal] Sending command bytes=15 command=show ip route deviceId=profile-1794185608938654100-11740
+2026-11-09T00:56:47.795Z [DEBUG] [performance] Command completed commands=7 deviceId=profile-1794185608938654100-11740 durationMs=1225 outputBytes=1025
+2026-11-09T00:56:53.886Z [DEBUG] [terminal] Sending command bytes=25 command=show ip interface brief deviceId=profile-1794185608938654100-11740
+2026-11-09T00:56:54.521Z [DEBUG] [performance] Command completed commands=8 deviceId=profile-1794185608938654100-11740 durationMs=635 outputBytes=531
+2026-11-09T00:56:54.522Z [DEBUG] [terminal] Sending command bytes=17 command=show vlan brief deviceId=profile-1794185608938654100-11740
+2026-11-09T00:56:55.064Z [DEBUG] [performance] Command completed commands=9 deviceId=profile-1794185608938654100-11740 durationMs=542 outputBytes=419
+2026-11-09T00:56:55.064Z [DEBUG] [terminal] Sending command bytes=15 command=show ip route deviceId=profile-1794185608938654100-11740
+2026-11-09T00:56:56.294Z [DEBUG] [performance] Command completed commands=10 deviceId=profile-1794185608938654100-11740 durationMs=1230 outputBytes=1025
+2026-11-09T00:57:05.845Z [DEBUG] [terminal] Sending command bytes=21 command=show running-config deviceId=profile-1794185608938654100-11740
+2026-11-09T00:57:10.897Z [DEBUG] [performance] Command completed commands=11 deviceId=profile-1794185608938654100-11740 durationMs=5051 outputBytes=4297
+2026-11-09T00:57:16.731Z [DEBUG] [terminal] Sending command bytes=25 command=show ip interface brief deviceId=profile-1794185608938654100-11740
+2026-11-09T00:57:17.399Z [DEBUG] [performance] Command completed commands=12 deviceId=profile-1794185608938654100-11740 durationMs=668 outputBytes=531
+2026-11-09T00:57:17.399Z [DEBUG] [terminal] Sending command bytes=17 command=show vlan brief deviceId=profile-1794185608938654100-11740
+2026-11-09T00:57:17.927Z [DEBUG] [performance] Command completed commands=13 deviceId=profile-1794185608938654100-11740 durationMs=527 outputBytes=419
+2026-11-09T00:57:17.927Z [DEBUG] [terminal] Sending command bytes=15 command=show ip route deviceId=profile-1794185608938654100-11740
+2026-11-09T00:57:19.141Z [DEBUG] [performance] Command completed commands=14 deviceId=profile-1794185608938654100-11740 durationMs=1214 outputBytes=1025
+2026-11-09T00:57:22.163Z [DEBUG] [terminal] Sending command bytes=21 command=show running-config deviceId=profile-1794185608938654100-11740
+2026-11-09T00:57:27.211Z [DEBUG] [performance] Command completed commands=15 deviceId=profile-1794185608938654100-11740 durationMs=5047 outputBytes=4297
+2026-11-09T00:57:33.154Z [DEBUG] [terminal] Sending command bytes=21 command=show running-config deviceId=profile-1794185608938654100-11740
+2026-11-09T00:57:38.207Z [DEBUG] [performance] Command completed commands=16 deviceId=profile-1794185608938654100-11740 durationMs=5053 outputBytes=4297
+2026-11-09T00:57:39.730Z [DEBUG] [terminal] Sending command bytes=21 command=show running-config deviceId=profile-1794185608938654100-11740
+2026-11-09T00:57:44.766Z [DEBUG] [performance] Command completed commands=17 deviceId=profile-1794185608938654100-11740 durationMs=5036 outputBytes=4297
+2026-11-09T00:57:56.190Z [DEBUG] [terminal] Sending command bytes=25 command=show ip interface brief deviceId=profile-1794185608938654100-11740
+2026-11-09T00:57:56.831Z [DEBUG] [performance] Command completed commands=18 deviceId=profile-1794185608938654100-11740 durationMs=641 outputBytes=531
+2026-11-09T00:57:56.831Z [DEBUG] [terminal] Sending command bytes=17 command=show vlan brief deviceId=profile-1794185608938654100-11740
+2026-11-09T00:57:57.342Z [DEBUG] [performance] Command completed commands=19 deviceId=profile-1794185608938654100-11740 durationMs=510 outputBytes=419
+2026-11-09T00:57:57.342Z [DEBUG] [terminal] Sending command bytes=15 command=show ip route deviceId=profile-1794185608938654100-11740
+2026-11-09T00:57:58.557Z [DEBUG] [performance] Command completed commands=20 deviceId=profile-1794185608938654100-11740 durationMs=1215 outputBytes=1025
+2026-11-09T00:58:15.193Z [INFO] [recording] Session recording stopped bytes=54215 deviceId=profile-1794185608938654100-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005612.344.log redactions=277 sizeLimitReached=false
+2026-11-09T00:58:15.193Z [INFO] [session] Device session closed commands=20 deviceId=profile-1794185608938654100-11740 durationMs=122298 hostname=Cisco transportError=null
+2026-11-09T00:58:16.877Z [INFO] [recording] Session recording stopped bytes=54215 deviceId=profile-1794185608938654100-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185608938654100-11740-005612.344.log redactions=277 sizeLimitReached=false
+2026-11-09T00:58:16.878Z [INFO] [session] Device session closed commands=20 deviceId=profile-1794185608938654100-11740 durationMs=null hostname=null transportError=null
+2026-11-09T00:58:16.879Z [INFO] [recording] Session recording stopped bytes=631 deviceId=profile-1794185647527190900-11740 parts=1 path=D:\Reef-USB\Logs\Sessions\2026-11-09\profile-1794185647527190900-11740-005429.616.log redactions=0 sizeLimitReached=false
+2026-11-09T00:58:16.879Z [INFO] [session] Device session closed commands=0 deviceId=profile-1794185647527190900-11740 durationMs=null hostname=null transportError=null
+2026-11-09T00:58:16.935Z [INFO] [shutdown] Reef application stopped normally
+2026-11-09T00:58:16.935Z [INFO] [shutdown] Reef diagnostics shutting down

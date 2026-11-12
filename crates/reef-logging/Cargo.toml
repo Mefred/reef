@@ -1,10 +1,15 @@
 [package]
 name = "reef-logging"
-description = "Structured logging setup for Reef using tracing"
+description = "Portable diagnostic logging and session capture for Reef"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
 
 [dependencies]
+chrono = { version = "0.4", features = ["clock"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1", features = ["v4"] }

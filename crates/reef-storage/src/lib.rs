@@ -9,8 +9,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use directories::ProjectDirs;
-
 /// A saved device connection profile.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DeviceProfile {
@@ -112,9 +110,7 @@ fn write_json_atomic(path: &Path, json: &[u8]) -> Result<(), Error> {
 }
 
 fn data_dir() -> Result<PathBuf, Error> {
-    ProjectDirs::from("", "", "reef")
-        .map(|p| p.data_dir().to_path_buf())
-        .ok_or_else(|| Error::Io("cannot determine data directory".to_string()))
+    reef_logging::paths::data_dir().map_err(Error::Io)
 }
 
 /// Main storage handle. All operations are synchronous file I/O.
@@ -123,14 +119,24 @@ pub struct Storage {
 }
 
 impl Storage {
-    /// Open (creating if necessary) the Reef data directory.
+    /// Open (creating if necessary) the portable Reef data directory.
+    ///
+    /// The location is always USB-relative (next to the executable), never
+    /// `%APPDATA%`, the user home directory, or the process working directory.
     pub fn open() -> Result<Self, Error> {
-        let dir = data_dir()?;
-        fs::create_dir_all(&dir).map_err(|e| Error::Io(e.to_string()))?;
-        fs::create_dir_all(dir.join("backups")).map_err(|e| Error::Io(e.to_string()))?;
-        fs::create_dir_all(dir.join("profiles")).map_err(|e| Error::Io(e.to_string()))?;
-        fs::create_dir_all(dir.join("history")).map_err(|e| Error::Io(e.to_string()))?;
-        Ok(Storage { data_dir: dir })
+        Self::open_at(data_dir()?)
+    }
+
+    /// Open a storage handle rooted at an explicit directory. Used by tests
+    /// and by tools that need an isolated data directory.
+    pub fn open_at(directory: PathBuf) -> Result<Self, Error> {
+        fs::create_dir_all(&directory).map_err(|e| Error::Io(e.to_string()))?;
+        fs::create_dir_all(directory.join("backups")).map_err(|e| Error::Io(e.to_string()))?;
+        fs::create_dir_all(directory.join("profiles")).map_err(|e| Error::Io(e.to_string()))?;
+        fs::create_dir_all(directory.join("history")).map_err(|e| Error::Io(e.to_string()))?;
+        Ok(Storage {
+            data_dir: directory,
+        })
     }
 
     fn record_path(&self, directory: &str, id: &str) -> Result<PathBuf, Error> {
@@ -282,6 +288,18 @@ mod tests {
             .unwrap_or_default()
     }
 
+    fn test_storage(name: &str) -> Storage {
+        let unique = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        Storage::open_at(std::env::temp_dir().join(format!(
+            "reef-storage-{name}-{}-{unique}",
+            std::process::id()
+        )))
+        .expect("isolated storage should open")
+    }
+
     #[test]
     fn json_records_are_replaced_atomically() {
         let unique = std::time::SystemTime::now()
@@ -314,7 +332,7 @@ mod tests {
 
     #[test]
     fn storage_open_creates_dirs() {
-        let s = Storage::open().expect("storage should open");
+        let s = test_storage("dirs");
         assert!(s.data_dir.join("backups").is_dir());
         assert!(s.data_dir.join("profiles").is_dir());
         assert!(s.data_dir.join("history").is_dir());
@@ -322,7 +340,7 @@ mod tests {
 
     #[test]
     fn profile_round_trip() {
-        let s = Storage::open().expect("storage should open");
+        let s = test_storage("open");
         let profile = DeviceProfile {
             id: "test-1".to_string(),
             name: "Test Switch".to_string(),
@@ -339,14 +357,14 @@ mod tests {
 
     #[test]
     fn profile_id_rejects_path_traversal() {
-        let storage = Storage::open().expect("storage should open");
+        let storage = test_storage("validate");
         assert!(storage.profile_path("../outside").is_err());
         assert!(storage.profile_path("").is_err());
     }
 
     #[test]
     fn backup_and_history_ids_reject_path_traversal() {
-        let storage = Storage::open().expect("storage should open");
+        let storage = test_storage("validate");
         assert!(storage.record_path("backups", "../outside").is_err());
         assert!(storage.record_path("history", "../../outside").is_err());
         assert!(storage.record_path("backups", "").is_err());
@@ -354,7 +372,7 @@ mod tests {
 
     #[test]
     fn backup_round_trip() {
-        let s = Storage::open().expect("storage should open");
+        let s = test_storage("open");
         let backup = ConfigBackup {
             id: "backup-1".to_string(),
             device_id: "dev-1".to_string(),
@@ -372,7 +390,7 @@ mod tests {
 
     #[test]
     fn change_record_round_trip() {
-        let s = Storage::open().expect("storage should open");
+        let s = test_storage("open");
         let record = ChangeRecord {
             id: "change-1".to_string(),
             device_id: "dev-1".to_string(),
@@ -391,7 +409,7 @@ mod tests {
 
     #[test]
     fn backup_not_found() {
-        let s = Storage::open().expect("storage should open");
+        let s = test_storage("open");
         assert!(s.get_backup("nonexistent").is_err());
     }
 }

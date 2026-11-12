@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::transport::TransportType;
-use directories::ProjectDirs;
 
 /// Policy for handling SSH host keys.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,7 +26,10 @@ impl Default for HostKeyPolicy {
 }
 
 /// Configuration for connecting to a single device.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+///
+/// Secret fields are never serialized and are masked by the manual `Debug`
+/// implementation below.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ConnectionConfig {
     /// Device hostname or IP address.
     pub host: String,
@@ -38,8 +40,10 @@ pub struct ConnectionConfig {
     /// Login username.
     pub username: String,
     /// Login password (optional; may be prompted).
+    #[serde(skip_serializing)]
     pub password: Option<String>,
     /// Enable/privilege escalation secret (optional).
+    #[serde(skip_serializing)]
     pub enable_secret: Option<String>,
     /// SSH host key verification policy.
     pub host_key_policy: HostKeyPolicy,
@@ -49,6 +53,27 @@ pub struct ConnectionConfig {
     pub serial_port: Option<PathBuf>,
     /// Serial baud rate. Default 9600.
     pub serial_baud: u32,
+}
+
+impl std::fmt::Debug for ConnectionConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ConnectionConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("transport", &self.transport)
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "<redacted>"))
+            .field(
+                "enable_secret",
+                &self.enable_secret.as_ref().map(|_| "<redacted>"),
+            )
+            .field("host_key_policy", &self.host_key_policy)
+            .field("timeout", &self.timeout)
+            .field("serial_port", &self.serial_port)
+            .field("serial_baud", &self.serial_baud)
+            .finish()
+    }
 }
 
 impl Default for ConnectionConfig {
@@ -100,11 +125,13 @@ impl ConnectionConfig {
     }
 
     /// Path to the known_hosts file used for SSH host key verification.
+    ///
+    /// Always USB-relative (`Config/known_hosts`). Verification itself is
+    /// never disabled; this only chooses where enrolled keys are stored.
     pub fn known_hosts_path() -> PathBuf {
-        ProjectDirs::from("", "", "reef")
-            .map(|p| p.config_dir().to_path_buf())
-            .unwrap_or_else(|| std::env::temp_dir())
-            .join("known_hosts")
+        reef_logging::paths::known_hosts_path().unwrap_or_else(|_| {
+            std::env::temp_dir().join(format!("reef-known_hosts-{}-fallback", std::process::id()))
+        })
     }
 }
 

@@ -10,6 +10,8 @@ pub enum Error {
     AuthFailed,
     #[error("privilege escalation failed")]
     PrivilegeEscalationFailed,
+    #[error("startup-config write blocked by Reef safety policy ({rule})")]
+    StartupConfigWriteBlocked { rule: String },
     #[error("not connected")]
     NotConnected,
     #[error("session not found: {0}")]

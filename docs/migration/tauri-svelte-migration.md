@@ -1,4 +1,10 @@
-# Reef desktop migration: Slint to Tauri 2
+# Reef desktop migration: Slint to Tauri 2 (superseded)
+
+> [!NOTE]
+> This document describes the historical Slint → Tauri 2 migration. Tauri 2 and
+> the Svelte/TypeScript/Vite frontend have since been removed from Reef. The
+> desktop shell is now a native wgpui UI. See
+> `docs/migration/native-wgpui-migration.md` for the current migration record.
 
 ## Goal
 

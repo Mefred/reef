@@ -1,2 +1,9 @@
 [build]
 jobs = 4
+
+# Enable legacy SHA1-based key-exchange algorithms in libssh2
+# (diffie-hellman-group14-sha1, diffie-hellman-group-exchange-sha1)
+# required by many Cisco IOS devices. These are compiled out of libssh2 by
+# default behind #ifdef LIBSSH2_KEX_SHA1_ENABLE.
+[env]
+CFLAGS_X86_64_PC_WINDOWS_GNU = "-DLIBSSH2_KEX_SHA1_ENABLE"

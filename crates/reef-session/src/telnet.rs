@@ -7,7 +7,7 @@ use tokio::net::TcpStream;
 
 use crate::config::ConnectionConfig;
 use crate::error::Error;
-use crate::transport::{DeviceTransport, TransportType};
+use crate::transport::{DeviceTransport, TransportMetadata, TransportType};
 
 /// Telnet IAC (Interpret As Command) byte.
 const IAC: u8 = 255;
@@ -15,12 +15,27 @@ const WILL: u8 = 251;
 const WONT: u8 = 252;
 const DO: u8 = 253;
 const DONT: u8 = 254;
+const SB: u8 = 250;
+const SE: u8 = 240;
+
+/// Incremental Telnet parser. IAC sequences can span reads, so parser state
+/// persists between chunks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum TelnetState {
+    #[default]
+    Data,
+    Iac,
+    Negotiation,
+    Subnegotiation,
+    SubnegotiationIac,
+}
 
 pub struct TelnetTransport {
     stream: Option<TcpStream>,
     connected: bool,
     read_buf: Vec<u8>,
     config: ConnectionConfig,
+    state: TelnetState,
 }
 
 impl TelnetTransport {
@@ -30,6 +45,7 @@ impl TelnetTransport {
             connected: false,
             read_buf: Vec::new(),
             config,
+            state: TelnetState::Data,
         }
     }
 
@@ -65,7 +81,6 @@ impl DeviceTransport for TelnetTransport {
         self.negotiate().await?;
         self.stream = Some(stream);
         self.connected = true;
-        self.disable_paging().await?;
         Ok(())
     }
 
@@ -109,8 +124,7 @@ impl DeviceTransport for TelnetTransport {
         match tokio::time::timeout(Duration::from_millis(100), stream.read(&mut tmp)).await {
             Ok(Ok(0)) => Ok(String::new()),
             Ok(Ok(n)) => {
-                let s = String::from_utf8_lossy(&tmp[..n]).to_string();
-                self.process_telnet_stream(&s);
+                self.process_telnet_stream(&tmp[..n]);
                 // Drain the buffer: return what we have and clear it for next read.
                 let available = std::mem::take(&mut self.read_buf);
                 Ok(String::from_utf8_lossy(&available).to_string())
@@ -151,37 +165,68 @@ impl DeviceTransport for TelnetTransport {
     fn transport_type(&self) -> TransportType {
         TransportType::Telnet
     }
+
+    fn metadata(&self) -> TransportMetadata {
+        TransportMetadata::new(TransportType::Telnet)
+            .with(
+                "endpoint",
+                format!("{}:{}", self.config.host, self.config.port),
+            )
+            .with("username", self.config.username.clone())
+            .with("encryption", "none")
+    }
 }
 
 impl TelnetTransport {
-    /// Disable paging (`terminal length 0`).
-    async fn disable_paging(&mut self) -> Result<(), Error> {
-        self.send("terminal length 0\r\n").await?;
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        let _ = self.read_available(Duration::from_millis(300)).await?;
-        Ok(())
-    }
-
-    /// Strip Telnet IAC sequences and buffer the resulting text.
-    fn process_telnet_stream(&mut self, raw: &str) {
-        let bytes = raw.as_bytes();
-        let mut out = Vec::new();
-        let mut i = 0;
-        while i < bytes.len() {
-            if bytes[i] == IAC && i + 2 < bytes.len() {
-                // Skip 3-byte IAC command (IAC, cmd, option).
-                i += 3;
-                continue;
+    /// Strip Telnet IAC sequences byte-by-byte, preserving arbitrary binary
+    /// text (including UTF-8) and sequences split across reads.
+    fn process_telnet_stream(&mut self, raw: &[u8]) {
+        for &byte in raw {
+            match self.state {
+                TelnetState::Data => {
+                    if byte == IAC {
+                        self.state = TelnetState::Iac;
+                    } else {
+                        self.read_buf.push(byte);
+                    }
+                }
+                TelnetState::Iac => match byte {
+                    IAC => {
+                        // Escaped 0xFF data byte.
+                        self.read_buf.push(IAC);
+                        self.state = TelnetState::Data;
+                    }
+                    WILL | WONT | DO | DONT => {
+                        self.state = TelnetState::Negotiation;
+                    }
+                    SB => {
+                        self.state = TelnetState::Subnegotiation;
+                    }
+                    SE => {
+                        self.state = TelnetState::Data;
+                    }
+                    _ => {
+                        // Two-byte command such as NOP or GA.
+                        self.state = TelnetState::Data;
+                    }
+                },
+                TelnetState::Negotiation => {
+                    // The option byte is consumed. Reef accepts the peer's
+                    // defaults; refusing every option can break some devices.
+                    self.state = TelnetState::Data;
+                }
+                TelnetState::Subnegotiation => {
+                    if byte == IAC {
+                        self.state = TelnetState::SubnegotiationIac;
+                    }
+                }
+                TelnetState::SubnegotiationIac => match byte {
+                    SE => self.state = TelnetState::Data,
+                    IAC => self.state = TelnetState::Subnegotiation,
+                    _ => self.state = TelnetState::Subnegotiation,
+                },
             }
-            if bytes[i] == IAC && i + 1 < bytes.len() {
-                i += 2;
-                continue;
-            }
-            out.push(bytes[i]);
-            i += 1;
         }
-        let text = String::from_utf8_lossy(&out);
-        self.read_buf.extend_from_slice(text.as_bytes());
     }
 }
 

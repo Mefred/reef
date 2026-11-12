@@ -1,0 +1,79 @@
+Reef Portable - Classroom Testing Checklist
+============================================
+Version: portable Windows x64 build
+
+Copy this entire folder to a USB stick and run Reef.exe on each classroom
+machine. Tick each item as verified.
+
+A. PORTABLE INSTALLATION (no install, no admin)
+-----------------------------------------------
+[ ] Reef.exe is present next to portable.marker
+[ ] WebView2Loader.dll is NOT required
+[ ] Running Reef.exe does not require administrator elevation
+[ ] Reef.exe runs from a USB stick with any drive letter
+[ ] Moving the USB stick to a different drive letter still works
+[ ] No files are written to %APPDATA%, %LOCALAPPDATA%, or user home
+[ ] Config/reef-config.json is created next to Reef.exe
+[ ] Data/ directory is created next to Reef.exe
+
+B. DIAGNOSTICS & LOGGING
+------------------------
+[ ] App starts and writes a startup diagnostics event (Logs/Diagnostics/)
+[ ] Logs contain run IDs and millisecond timestamps
+[ ] Log levels present: TRACE/DEBUG/INFO/WARN/ERROR
+[ ] JSONL and human-readable log files are both produced
+[ ] Log rotation creates part files when a stream exceeds the size cap
+[ ] Diagnostics panel shows status, environment, and log list
+[ ] A log file can be previewed and copied from the panel
+[ ] Log directory can be opened from the panel
+[ ] Visible terminal can be cleared without deleting stored logs
+[ ] Logs can be exported to a ZIP (written to Logs/Exports/)
+[ ] Export ZIP contains environment.json, diagnostics-status.json,
+    README.txt, Logs/ (excluding Logs/Exports), Config/reef-config.json
+[ ] Old logs rotate and do not grow without bound (512 MiB cap per stream)
+
+C. TERMINAL / SESSION RECORDING
+-------------------------------
+[ ] Session recording can be started and stopped from the terminal toolbar
+[ ] Recording status is shown in the terminal toolbar
+[ ] Recorded output is saved under Logs/Sessions/<date>/
+[ ] Recording survives and preserves data on unexpected session end
+[ ] Large terminal output is not silently lost (full output recorded)
+[ ] Ctrl+C (SIGINT) can be sent to the connected device from the toolbar
+[ ] Session diagnostics are viewable in the Diagnostics panel
+
+D. SAFETY GUARD - NO STARTUP-CONFIG WRITES (MANDATORY)
+-------------------------------------------------------
+[ ] `write memory` is blocked and logged
+[ ] `write` is blocked and logged
+[ ] `copy running-config startup-config` is blocked and logged
+[ ] `copy run start` is blocked and logged
+[ ] `erase startup-config` / `delete nvram` variants are blocked and logged
+[ ] Blocked attempts do NOT expose passwords/secrets in logs
+[ ] Normal running-config edits still work (e.g. interface IP change)
+[ ] `show running-config` and other show commands still work
+[ ] There is no setting to re-enable startup-config writes
+[ ] Blocked attempts are visible in the Diagnostics/log output
+
+E. SECRETS & SECURITY
+---------------------
+[ ] Passwords are not recorded in plain text in logs
+[ ] Private keys / tokens are not recorded in plain text in logs
+[ ] SSH host-key verification remains enabled (cannot be disabled)
+[ ] Redaction applies to known secret keywords
+
+F. WINDOWS x64 BUILD (for the person building the image)
+--------------------------------------------------------
+[ ] reef.exe is a PE32+ x86-64 GUI executable
+[ ] No WebView2Loader.dll required; imports only system DLLs
+[ ] Binary compiled with x86_64-pc-windows-gnu target
+[ ] dist/Reef-USB.zip contains all files listed above
+[ ] Zip extract preserves directory structure and portable.marker
+
+NOTES
+-----
+- Direct/raw terminal access typed by the user cannot be fully guarded; the
+  safety guard covers Reef-managed command paths only.
+- No WebView2 Runtime required; the UI is rendered natively by wgpui.
+- This is a diagnostic/classroom tool, not a production configuration
+  management system.

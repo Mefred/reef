@@ -1,0 +1,20 @@
+# Reef terminal session recording
+# run_id: 4188e0a3-6abb-433d-80f7-d73bfbb104a6
+# device_id: profile-1794185647527190900-11740
+# endpoint: 10.80.24.190:22 (Ssh)
+# username: netadmin
+# hostname: -
+# started_at: 2026-11-09T00:54:19.012Z
+# secrets: passwords, enable secrets, SNMP communities, tokens, and private keys are never recorded
+# note: output is captured at the backend; ANSI escape sequences are stripped for readability
+
+
+# recording stopped_at: 2026-11-09T00:54:19.044Z
+# duration_ms: 32
+# bytes: 431
+# parts: 1
+# input_chunks: 0
+# output_chunks: 0
+# redactions: 0
+# ansi_sequences_removed: 0
+# size_limit_reached: false

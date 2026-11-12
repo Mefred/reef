@@ -3,11 +3,11 @@
 
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio_serial::{SerialPortBuilderExt, SerialStream};
+use tokio_serial::{DataBits, FlowControl, Parity, SerialPortBuilderExt, SerialStream, StopBits};
 
 use crate::config::ConnectionConfig;
 use crate::error::Error;
-use crate::transport::{DeviceTransport, TransportType};
+use crate::transport::{DeviceTransport, TransportMetadata, TransportType};
 
 pub struct SerialTransport {
     stream: Option<SerialStream>,
@@ -32,8 +32,12 @@ impl SerialTransport {
             .serial_port
             .as_ref()
             .ok_or_else(|| Error::Transport("serial port not configured".to_string()))?;
-        // Defaults are 8N1; baud rate is the only required setting.
+        // Cisco console standard: 8 data bits, no parity, 1 stop bit, no flow control.
         let stream = tokio_serial::new(port.to_string_lossy(), self.config.serial_baud)
+            .data_bits(DataBits::Eight)
+            .parity(Parity::None)
+            .stop_bits(StopBits::One)
+            .flow_control(FlowControl::None)
             .open_native_async()
             .map_err(|e| Error::Transport(format!("serial open {}: {}", port.display(), e)))?;
         Ok(stream)
@@ -45,7 +49,6 @@ impl DeviceTransport for SerialTransport {
         let stream = self.open_port()?;
         self.stream = Some(stream);
         self.connected = true;
-        self.disable_paging().await?;
         Ok(())
     }
 
@@ -125,14 +128,24 @@ impl DeviceTransport for SerialTransport {
     fn transport_type(&self) -> TransportType {
         TransportType::Serial
     }
+
+    fn metadata(&self) -> TransportMetadata {
+        self.metadata_details()
+    }
 }
 
 impl SerialTransport {
-    async fn disable_paging(&mut self) -> Result<(), Error> {
-        self.send("terminal length 0\r\n").await?;
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        let _ = self.read_available(Duration::from_millis(300)).await?;
-        Ok(())
+    fn metadata_details(&self) -> TransportMetadata {
+        let mut metadata = TransportMetadata::new(TransportType::Serial);
+        metadata
+            .details
+            .insert("baud".to_string(), self.config.serial_baud.to_string());
+        if let Some(port) = self.config.serial_port.as_ref() {
+            metadata
+                .details
+                .insert("port".to_string(), port.to_string_lossy().to_string());
+        }
+        metadata
     }
 }
 

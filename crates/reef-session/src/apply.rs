@@ -56,15 +56,14 @@ impl<'a, T: DeviceTransport> ApplyOrchestrator<'a, T> {
 
     /// Apply the change set to the device: generate commands, send them,
     /// then verify the result.
-    pub async fn apply(
-        &mut self,
-        change_set: &ChangeSet,
-        save_to_startup: bool,
-    ) -> Result<ApplyResult, Error> {
+    ///
+    /// Running-config changes are never persisted to startup-config. Whether
+    /// the caller asks for it or not, Reef refuses to write startup-config.
+    pub async fn apply(&mut self, change_set: &ChangeSet) -> Result<ApplyResult, Error> {
         // 1. Generate commands
         let command_batch = generate(change_set);
 
-        // 2. Backup running-config before applying (if save_to_startup or always)
+        // 2. Capture running-config locally before applying.
         let backed_up = self.backup_before_apply().await?;
 
         // 3. Send commands
@@ -76,12 +75,7 @@ impl<'a, T: DeviceTransport> ApplyOrchestrator<'a, T> {
             self.session.exit_config().await?;
         }
 
-        // 4. Optionally save to startup
-        if save_to_startup {
-            self.session.save_config().await?;
-        }
-
-        // 5. Verify by re-reading running-config
+        // 4. Verify by re-reading running-config. Startup-config is never written.
         let running_out = self.session.send_command("show running-config\r\n").await?;
         let parsed = reef_engine::parser::parse_running_config(&running_out).model;
         let verification = verify(&parsed, &desired_from_change_set(change_set));
@@ -98,7 +92,7 @@ impl<'a, T: DeviceTransport> ApplyOrchestrator<'a, T> {
 
     /// Roll back to a previously saved running-config using `configure replace`.
     /// The `snapshot` is the pre-apply running-config text.
-    pub async fn rollback(&mut self, snapshot: &str) -> Result<VerificationResult, Error> {
+    pub async fn rollback(&mut self, _snapshot: &str) -> Result<VerificationResult, Error> {
         // Write snapshot to a temp file on the device, then configure replace.
         // For Phase 3, we generate the reverse-config commands as a fallback.
         self.session.config_terminal().await?;
@@ -126,11 +120,14 @@ impl<'a, T: DeviceTransport> ApplyOrchestrator<'a, T> {
         Ok(verify(&parsed, &DeviceConfig::default()))
     }
 
-    /// Back up the current running-config before applying changes.
+    /// Capture the current running-config before applying changes.
+    ///
+    /// The snapshot is kept in memory and logged by the session recorder; it is
+    /// never written to startup-config. Returns `true` when a non-empty
+    /// snapshot was captured.
     async fn backup_before_apply(&mut self) -> Result<bool, Error> {
-        // Save to startup-config as a backup checkpoint
-        let _ = self.session.save_config().await?;
-        Ok(true)
+        let snapshot = self.session.send_command("show running-config\r\n").await?;
+        Ok(!snapshot.trim().is_empty())
     }
 }
 

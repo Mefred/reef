@@ -1,17 +1,22 @@
-//! A thread-affine session actor for the Tauri application.
+//! A thread-affine session actor for the native Reef UI.
 //!
 //! SessionManager intentionally uses Rc<RefCell<_>> and must remain on one
 //! thread. This actor owns it on a dedicated current-thread Tokio runtime and
-//! exposes only a Send + Sync message handle to Tauri managed state.
+//! exposes only a Send + Sync message handle to the wgpui application.
 
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use reef_engine::model::{DeviceIdentity, InterfaceRef, StaticRoute, VlanConfig};
+use reef_engine::model::{
+    DeviceIdentity, InterfaceConfig, InterfaceMode, InterfaceRef, Ipv4Address, StaticRoute,
+    VlanConfig,
+};
 use reef_engine::parser::parse_running_config;
 use reef_engine::parser::{parse_interfaces, parse_routes, parse_vlans};
+use reef_logging::record::RecordingStatus;
 use reef_session::{
-    ConnectionConfig, SerialTransport, SessionManager, SshTransport, TelnetTransport, TransportType,
+    ConnectionConfig, SerialTransport, SessionManager, SshTransport, TelnetTransport,
+    TransportMetadata, TransportType,
 };
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Builder;
@@ -133,9 +138,27 @@ pub struct ConfigurationDraft {
     /// Additional name servers; existing servers are preserved.
     #[serde(default)]
     pub add_name_servers: Vec<String>,
+    /// Name servers to remove.
+    #[serde(default)]
+    pub remove_name_servers: Vec<String>,
     /// New VLANs only. Existing VLANs cannot be modified or removed by this draft.
     #[serde(default)]
     pub add_vlans: Vec<AddVlanDraft>,
+    /// VLAN IDs to remove.
+    #[serde(default)]
+    pub remove_vlan_ids: Vec<u16>,
+    /// Interface configurations to add or modify.
+    #[serde(default)]
+    pub add_interfaces: Vec<InterfaceDraft>,
+    /// Interface names to remove.
+    #[serde(default)]
+    pub remove_interface_names: Vec<String>,
+    /// Static routes to add.
+    #[serde(default)]
+    pub add_routes: Vec<RouteDraft>,
+    /// Static route prefixes to remove.
+    #[serde(default)]
+    pub remove_route_prefixes: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -145,7 +168,38 @@ pub struct AddVlanDraft {
     pub name: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterfaceDraft {
+    pub name: String,
+    pub description: Option<String>,
+    pub enabled: Option<bool>,
+    pub mode: Option<String>,
+    pub access_vlan: Option<u16>,
+    pub ipv4_address: Option<String>,
+    pub ipv4_prefix_len: Option<u8>,
+    pub shutdown: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteDraft {
+    pub prefix: String,
+    pub next_hop: String,
+    pub admin_distance: Option<u16>,
+}
+
+/// Non-secret diagnostics for an active device session.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDiagnostics {
+    pub connected: bool,
+    pub command_count: u64,
+    pub transport: TransportMetadata,
+    pub recording: Option<RecordingStatus>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConfigurationPreview {
     pub diff: String,
@@ -195,6 +249,48 @@ enum Command {
         device_id: String,
         draft: ConfigurationDraft,
         reply: oneshot::Sender<Result<ConfigurationPreview, String>>,
+    },
+    ApplyConfiguration {
+        device_id: String,
+        commands: Vec<String>,
+        reply: oneshot::Sender<Result<String, String>>,
+    },
+    ListKnownHosts {
+        reply: oneshot::Sender<Result<Vec<reef_session::KnownHostEntry>, String>>,
+    },
+    EnrollHostKey {
+        host: String,
+        key_type: String,
+        key_hex: String,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    RemoveKnownHost {
+        host: String,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    CheckHostKey {
+        host: String,
+        reply: oneshot::Sender<Result<reef_session::HostKeyStatus, String>>,
+    },
+    SendInterrupt {
+        device_id: String,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
+    StartRecording {
+        device_id: String,
+        reply: oneshot::Sender<Result<RecordingStatus, String>>,
+    },
+    StopRecording {
+        device_id: String,
+        reply: oneshot::Sender<Result<Option<RecordingStatus>, String>>,
+    },
+    GetRecordingStatus {
+        device_id: String,
+        reply: oneshot::Sender<Result<Option<RecordingStatus>, String>>,
+    },
+    GetSessionDiagnostics {
+        device_id: String,
+        reply: oneshot::Sender<Result<SessionDiagnostics, String>>,
     },
     Shutdown {
         reply: oneshot::Sender<Result<(), String>>,
@@ -345,6 +441,149 @@ impl SessionActor {
                 draft,
                 reply,
             })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    /// Send a batch of configuration commands to the device in one config
+    /// session. Only running-configuration changes are sent; startup-config
+    /// writes remain permanently disabled.
+    pub async fn apply_configuration(
+        &self,
+        device_id: String,
+        commands: Vec<String>,
+    ) -> Result<String, String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::ApplyConfiguration {
+                device_id,
+                commands,
+                reply,
+            })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    pub async fn send_interrupt(&self, device_id: String) -> Result<(), String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::SendInterrupt { device_id, reply })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    pub async fn list_known_hosts(&self) -> Result<Vec<reef_session::KnownHostEntry>, String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::ListKnownHosts { reply })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    pub async fn enroll_host_key(
+        &self,
+        host: String,
+        key_type: String,
+        key_hex: String,
+    ) -> Result<(), String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::EnrollHostKey {
+                host,
+                key_type,
+                key_hex,
+                reply,
+            })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    pub async fn remove_known_host(&self, host: String) -> Result<(), String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::RemoveKnownHost { host, reply })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    pub async fn check_host_key(
+        &self,
+        host: String,
+    ) -> Result<reef_session::HostKeyStatus, String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::CheckHostKey { host, reply })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    pub async fn start_recording(&self, device_id: String) -> Result<RecordingStatus, String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::StartRecording { device_id, reply })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    pub async fn stop_recording(
+        &self,
+        device_id: String,
+    ) -> Result<Option<RecordingStatus>, String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::StopRecording { device_id, reply })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    pub async fn recording_status(
+        &self,
+        device_id: String,
+    ) -> Result<Option<RecordingStatus>, String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::GetRecordingStatus { device_id, reply })
+            .await
+            .map_err(|_| "session actor is unavailable".to_string())?;
+        response
+            .await
+            .map_err(|_| "session actor stopped before replying".to_string())?
+    }
+
+    pub async fn session_diagnostics(
+        &self,
+        device_id: String,
+    ) -> Result<SessionDiagnostics, String> {
+        let (reply, response) = oneshot::channel();
+        self.sender
+            .send(Command::GetSessionDiagnostics { device_id, reply })
             .await
             .map_err(|_| "session actor is unavailable".to_string())?;
         response
@@ -759,6 +998,96 @@ async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
                             },
                         );
                     }
+                    for vlan_id in &draft.remove_vlan_ids {
+                        desired.vlans.remove(vlan_id);
+                    }
+
+                    // Remove name servers
+                    for ns in &draft.remove_name_servers {
+                        if let Ok(normalized) = normalize_name_server(ns) {
+                            desired.ip_name_server.retain(|s| s != &normalized);
+                        }
+                    }
+
+                    // Interface add/modify
+                    for iface_draft in &draft.add_interfaces {
+                        let name = iface_draft.name.trim();
+                        if name.is_empty() {
+                            return Err("interface name cannot be empty".to_string());
+                        }
+                        let mut iface = desired
+                            .interfaces
+                            .get(name)
+                            .cloned()
+                            .unwrap_or_else(|| InterfaceConfig {
+                                name: name.to_string(),
+                                ..Default::default()
+                            });
+                        if let Some(desc) = &iface_draft.description {
+                            iface.description = Some(desc.clone());
+                        }
+                        if let Some(enabled) = iface_draft.enabled {
+                            iface.enabled = enabled;
+                        }
+                        if let Some(mode_str) = &iface_draft.mode {
+                            iface.mode = match mode_str.as_str() {
+                                "access" => InterfaceMode::Access,
+                                "trunk" => InterfaceMode::Trunk,
+                                "routed" | "layer3" => InterfaceMode::Routed,
+                                "l2" => InterfaceMode::L2,
+                                _ => return Err(format!("unknown interface mode: {mode_str}")),
+                            };
+                        }
+                        if let Some(vlan) = iface_draft.access_vlan {
+                            iface.access_vlan = Some(vlan);
+                        }
+                        if let Some(addr_str) = &iface_draft.ipv4_address {
+                            if let Some(prefix_len) = iface_draft.ipv4_prefix_len {
+                                let addr: std::net::Ipv4Addr = addr_str
+                                    .parse()
+                                    .map_err(|_| format!("invalid IPv4 address: {addr_str}"))?;
+                                iface.ipv4 = Some(Ipv4Address {
+                                    address: addr,
+                                    prefix_len,
+                                });
+                            } else {
+                                return Err(format!(
+                                    "IPv4 prefix length required for interface {name}"
+                                ));
+                            }
+                        }
+                        if iface_draft.shutdown.unwrap_or(false) {
+                            iface.enabled = false;
+                        }
+                        desired.interfaces.insert(name.to_string(), iface);
+                    }
+                    for iface_name in &draft.remove_interface_names {
+                        desired.interfaces.remove(iface_name);
+                    }
+
+                    // Route add
+                    for route_draft in &draft.add_routes {
+                        let prefix: ipnet::IpNet = route_draft
+                            .prefix
+                            .parse()
+                            .map_err(|_| format!("invalid route prefix: {}", route_draft.prefix))?;
+                        let next_hop: std::net::IpAddr = route_draft
+                            .next_hop
+                            .parse()
+                            .map_err(|_| format!("invalid next-hop: {}", route_draft.next_hop))?;
+                        desired.ip_routes.push(StaticRoute {
+                            prefix,
+                            next_hop,
+                            admin_distance: route_draft.admin_distance,
+                            permanent: false,
+                        });
+                    }
+                    // Route remove
+                    for prefix_str in &draft.remove_route_prefixes {
+                        if let Ok(prefix) = prefix_str.parse::<ipnet::IpNet>() {
+                            desired.ip_routes.retain(|r| r.prefix != prefix);
+                        }
+                    }
 
                     let changes = reef_engine::planner::plan(&current, &desired);
                     let problems = reef_engine::validator::validate(&changes, &current);
@@ -793,6 +1122,17 @@ async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
                 .await;
                 let _ = reply.send(result);
             }
+            Command::ApplyConfiguration {
+                device_id,
+                commands,
+                reply,
+            } => {
+                let result = manager
+                    .send_config_batch(&device_id, &commands)
+                    .await
+                    .map_err(|error| error.to_string());
+                let _ = reply.send(result);
+            }
             Command::Enable {
                 device_id,
                 secret,
@@ -802,6 +1142,68 @@ async fn run_actor(mut receiver: mpsc::Receiver<Command>) {
                     .enable(&device_id, &secret)
                     .await
                     .map_err(|error| error.to_string());
+                let _ = reply.send(result);
+            }
+            Command::SendInterrupt { device_id, reply } => {
+                let result = manager
+                    .send_interrupt(&device_id)
+                    .await
+                    .map_err(|error| error.to_string());
+                let _ = reply.send(result);
+            }
+            Command::ListKnownHosts { reply } => {
+                let entries = reef_session::SshTransport::list_known_hosts_static();
+                let _ = reply.send(Ok(entries));
+            }
+            Command::EnrollHostKey {
+                host,
+                key_type,
+                key_hex,
+                reply,
+            } => {
+                let result =
+                    reef_session::SshTransport::enroll_host_key_static(&host, &key_type, &key_hex);
+                let _ = reply.send(result.map_err(|e| e.to_string()));
+            }
+            Command::RemoveKnownHost { host, reply } => {
+                let result = reef_session::SshTransport::remove_known_host_static(&host);
+                let _ = reply.send(result.map_err(|e| e.to_string()));
+            }
+            Command::CheckHostKey { host, reply } => {
+                let status = reef_session::SshTransport::check_host_key_static(&host);
+                let _ = reply.send(Ok(status));
+            }
+            Command::StartRecording { device_id, reply } => {
+                let result = manager
+                    .start_recording(&device_id)
+                    .map_err(|error| error.to_string());
+                let _ = reply.send(result);
+            }
+            Command::StopRecording { device_id, reply } => {
+                let _ = reply.send(Ok(manager.stop_recording(&device_id)));
+            }
+            Command::GetRecordingStatus { device_id, reply } => {
+                let _ = reply.send(Ok(manager.recording_status(&device_id)));
+            }
+            Command::GetSessionDiagnostics { device_id, reply } => {
+                let result = async {
+                    if !manager.has_session(&device_id) {
+                        return Err(format!("no session for device {device_id}"));
+                    }
+                    let connected = manager
+                        .is_connected(&device_id)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    Ok(SessionDiagnostics {
+                        connected,
+                        command_count: manager.command_count(&device_id).unwrap_or(0),
+                        transport: manager
+                            .transport_metadata(&device_id)
+                            .unwrap_or_else(|| TransportMetadata::new(TransportType::Ssh)),
+                        recording: manager.recording_status(&device_id),
+                    })
+                }
+                .await;
                 let _ = reply.send(result);
             }
             Command::Shutdown { reply } => break Some(reply),

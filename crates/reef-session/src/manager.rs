@@ -9,8 +9,9 @@
 use crate::config::ConnectionConfig;
 use crate::error::Error;
 use crate::session::Session;
-use crate::transport::DeviceTransport;
+use crate::transport::{DeviceTransport, TransportMetadata};
 use reef_engine::model::DeviceIdentity;
+use reef_logging::record::RecordingStatus;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
@@ -43,7 +44,13 @@ pub trait DynSession {
     fn identify<'a>(
         &'a mut self,
     ) -> Pin<Box<dyn Future<Output = Result<DeviceIdentity, Error>> + 'a>>;
-    fn save_config<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
+    fn send_interrupt<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>>;
+    fn start_recording(&mut self) -> Result<RecordingStatus, Error>;
+    fn stop_recording(&mut self) -> Option<RecordingStatus>;
+    fn recording_status(&self) -> Option<RecordingStatus>;
+    fn recording_path(&self) -> Option<String>;
+    fn transport_metadata(&self) -> TransportMetadata;
+    fn command_count(&self) -> u64;
     fn is_connected(&self) -> bool;
     fn transport_type(&self) -> crate::transport::TransportType;
 }
@@ -103,8 +110,32 @@ impl<T: DeviceTransport> DynSession for ConcreteSession<T> {
         Box::pin(async move { self.session.identify().await })
     }
 
-    fn save_config<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
-        Box::pin(async move { self.session.save_config().await })
+    fn send_interrupt<'a>(&'a mut self) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
+        Box::pin(async move { self.session.send_interrupt().await })
+    }
+
+    fn start_recording(&mut self) -> Result<RecordingStatus, Error> {
+        self.session.start_recording()
+    }
+
+    fn stop_recording(&mut self) -> Option<RecordingStatus> {
+        self.session.stop_recording()
+    }
+
+    fn recording_status(&self) -> Option<RecordingStatus> {
+        self.session.recording_status()
+    }
+
+    fn recording_path(&self) -> Option<String> {
+        self.session.recording_path()
+    }
+
+    fn transport_metadata(&self) -> TransportMetadata {
+        self.session.transport_metadata()
+    }
+
+    fn command_count(&self) -> u64 {
+        self.session.command_count()
     }
 
     fn is_connected(&self) -> bool {
@@ -131,7 +162,7 @@ impl SessionManager {
     /// Register a new session for a device with a concrete transport.
     pub fn register<T: DeviceTransport + 'static>(&mut self, device_id: &str, transport: T) {
         let session: Box<dyn DynSession> = Box::new(ConcreteSession {
-            session: Session::new(transport, ConnectionConfig::default()),
+            session: Session::new(transport, ConnectionConfig::default()).with_device_id(device_id),
             config: None,
         });
         self.sessions
@@ -252,14 +283,64 @@ impl SessionManager {
         guard.identify().await
     }
 
-    /// Save running-config to startup-config.
-    pub async fn save_config(&self, device_id: &str) -> Result<(), Error> {
+    /// Interrupt the running command on the device (Ctrl+C).
+    pub async fn send_interrupt(&self, device_id: &str) -> Result<(), Error> {
         let session = self
             .sessions
             .get(device_id)
             .ok_or_else(|| Error::NotFound(format!("no session for device {}", device_id)))?;
         let mut guard = session.borrow_mut();
-        guard.save_config().await
+        guard.send_interrupt().await
+    }
+
+    /// Start recording terminal I/O for a device session.
+    pub fn start_recording(&self, device_id: &str) -> Result<RecordingStatus, Error> {
+        let session = self
+            .sessions
+            .get(device_id)
+            .ok_or_else(|| Error::NotFound(format!("no session for device {}", device_id)))?;
+        let mut guard = session.borrow_mut();
+        guard.start_recording()
+    }
+
+    /// Stop recording terminal I/O for a device session.
+    pub fn stop_recording(&self, device_id: &str) -> Option<RecordingStatus> {
+        self.sessions
+            .get(device_id)
+            .and_then(|s| s.try_borrow_mut().ok())
+            .and_then(|mut g| g.stop_recording())
+    }
+
+    /// Current recording status for a device session, if one exists.
+    pub fn recording_status(&self, device_id: &str) -> Option<RecordingStatus> {
+        self.sessions
+            .get(device_id)
+            .and_then(|s| s.try_borrow().ok())
+            .and_then(|g| g.recording_status())
+    }
+
+    /// Path of the active or most recent recording, if any.
+    pub fn recording_path(&self, device_id: &str) -> Option<String> {
+        self.sessions
+            .get(device_id)
+            .and_then(|s| s.try_borrow().ok())
+            .and_then(|g| g.recording_path())
+    }
+
+    /// Negotiated transport details for a device session.
+    pub fn transport_metadata(&self, device_id: &str) -> Option<TransportMetadata> {
+        self.sessions
+            .get(device_id)
+            .and_then(|s| s.try_borrow().ok())
+            .map(|g| g.transport_metadata())
+    }
+
+    /// Number of commands sent during the current connection.
+    pub fn command_count(&self, device_id: &str) -> Option<u64> {
+        self.sessions
+            .get(device_id)
+            .and_then(|s| s.try_borrow().ok())
+            .map(|g| g.command_count())
     }
 
     /// Disconnect every registered session during application shutdown.

@@ -1,0 +1,221 @@
+Reef Portable - Test Report
+============================
+Build: portable Windows x64 (x86_64-pc-windows-gnu)
+Date: 2026-11-09
+Toolchain: rustc 1.99.0
+Cross target: x86_64-pc-windows-gnu (MinGW-w64); Wine 11.20 available
+
+RUST TESTS (cargo test --workspace)
+----------------------------------
+All workspace tests pass.
+  reef-app        : 16 passed, 0 failed
+  reef-engine     : 32 passed, 0 failed
+  reef-logging    : 12 passed, 0 failed
+  reef-session    : 27 unit passed, 0 failed
+                    17 integration passed, 0 failed
+  reef-storage    : 8 passed, 0 failed
+  TOTAL           : 102 passed, 0 failed
+
+Notable test coverage:
+  - safety::tests::blocks_all_running_to_startup_forms        PASS
+  - safety::tests::allows_normal_running_config_edits_and_show_commands  PASS
+  - safety::tests::blocks_ambiguous_running_copy              PASS
+  - paths::tests::detects_portable_marker                     PASS
+  - diagnostics: classify_log_files, startup_writes_stay_disabled  PASS
+
+RUST FORMATTING
+---------------
+cargo fmt --all -- --check : PASS (no diffs)
+
+RUST CLIPPY (cargo clippy --workspace --all-targets)
+----------------------------------------------------
+NOT PASSING -d warnings. There are pre-existing warnings across the
+codebase, mostly in reef-engine (parser/running_config.rs manual prefix
+stripping, field reassign_with_default) and reef-session
+(apply.rs, config.rs, serial.rs, ssh.rs). The diagnostic/safety code added
+(reef-logging paths.rs/lib.rs, reef-app diagnostics.rs,
+session_actor.rs, safety.rs) has been cleaned: reef-logging reports zero
+clippy warnings; reef-app has only the two intentional constant-value
+guard assertions in tests and the pre-existing SendCommand variant-name
+lint.
+
+Decision: existing warnings are documented here honestly rather than
+silenced or refactored, because they are pre-existing, cosmetic, and do
+not affect correctness. None are in the safety-critical config-write
+blocking path. `-D warnings` is not enforced in this build.
+
+WINDOWS x64 BUILD
+-----------------
+cargo build --release --target x86_64-pc-windows-gnu -p reef-app : SUCCESS
+Artifact: target/x86_64-pc-windows-gnu/release/reef.exe (37 MB stripped,
+PE32+ GUI x86-64)
+Imported DLLs: kernel32, user32, shell32, advapi32, crypt32, ws2_32,
+               bcrypt, d2d1, d3d11, dwrite, dxgi, gdi32, ole32,
+               oleaut32, opengl32, uiautomationcore, and standard Windows
+               API DLLs. No WebView2Loader.dll and no MinGW runtime DLLs
+               need to be bundled. All imports are system DLLs available on
+               Windows by default.
+
+SSH KEY-EXCHANGE FIX
+--------------------
+Fixed "ssh handshake: [Session(-5)] Unable to exchange encryption keys"
+failures against Cisco IOS devices. libssh2 compiles out the legacy SHA1-based
+key-exchange algorithms (`diffie-hellman-group14-sha1`,
+`diffie-hellman-group-exchange-sha1`) by default (they are behind
+`#ifdef LIBSSH2_KEX_SHA1_ENABLE`). PuTTY offers these algorithms by default,
+which is why PuTTY could connect while Reef could not.
+
+The SSH transport calls `ssh2::Session::method_pref()` before `handshake()` to
+offer both modern and legacy key-exchange algorithms. The Windows build passes
+`CFLAGS_X86_64_PC_WINDOWS_GNU="-DLIBSSH2_KEX_SHA1_ENABLE"` to the C compiler
+so libssh2-sys compiles the SHA1-based KEX algorithms into the library
+(configured in `.cargo/config.toml`).
+
+SSH HOST KEY MANAGEMENT
+-----------------------
+- View all known host keys stored in known_hosts (host, key type, fingerprint)
+- Enroll new host keys manually (host, key type, key hex)
+- Remove host keys from known_hosts
+- Refresh known hosts list from disk
+- Host key verification policy (Reject/Accept/Warn) is enforced during connection
+- Unknown host keys trigger a clear error message during connection
+
+SERIAL CONSOLE FIX
+------------------
+Fixed serial console connections where the device did not respond after the
+port opened at the configured baud rate. Some Cisco devices do not send a
+banner or prompt until they receive input from the terminal.
+
+Two changes were made:
+
+1. The serial port is now explicitly configured as 8N1 with no flow control
+   (data bits=8, parity=none, stop bits=1, flow control=none), matching the
+   Cisco console port standard.
+
+2. For serial connections, `perform_login()` now sends a wake-up carriage
+   return (`\r\n`) and waits 200 ms before reading the initial banner. This
+   prompts devices that stay silent until they see input to begin sending
+   their banner/login prompt.
+
+CONFIGURATION MANAGEMENT
+------------------------
+Reef can now modify device configuration (running-config only). Startup-config
+writes remain permanently disabled.
+
+New workflow:
+1. Connect to a device (SSH, Telnet, or Serial)
+2. Navigate to Configuration, Interfaces, VLANs, or Routing section
+3. Use "+ Add interface", "+ Add VLAN", "+ Add route" buttons to open edit forms
+4. Fill in the form and click "Add" to generate a configuration preview
+5. Review the generated IOS XE commands and diff
+6. Click "Apply configuration to device" to send changes
+
+Supported configuration changes:
+- Interfaces: name, description, enabled/shutdown, mode (routed/access/trunk),
+  access VLAN, IPv4 address and prefix length
+- VLANs: ID, name, enabled/disabled
+- Static routes: prefix (CIDR), next-hop, admin distance
+- System: hostname, domain name, name servers (additive)
+
+Safety:
+- Startup-configuration writes are permanently disabled
+- Changes that may affect management connectivity (e.g., changing the IP on
+  the management interface) are blocked from being applied
+- All changes are previewed before applying
+- Backed by the existing validator and planner from reef-engine
+
+UI/UX IMPROVEMENTS
+------------------
+- Toast notification system: success, warning, error, and info toasts appear
+  in the top-right corner for profile save/delete, connection success/failure,
+  preview generation, and configuration apply results
+- Connection status indicator in sidebar and topbar shows live connection state
+- Inline edit forms for interfaces, VLANs, and static routes with field
+  validation before generating preview
+- Apply confirmation: changes affecting management connectivity are blocked
+- Empty states guide users when no device is connected or no data is available
+- Dark green color palette throughout for reduced eye strain
+
+CONFIGURATION BACKUP / RESTORE
+------------------------------
+- Backup running-config to local storage with timestamp
+- List existing backups with creation date, source, and size
+- Restore configuration from a saved backup (applies via send_config_batch)
+- Automatic change recording when configuration is restored
+- Backup panel accessible from the Configuration section
+
+TERMINAL COMMAND HISTORY
+------------------------
+- Up/down arrow keys recall previously entered commands
+- Command history is maintained per session
+
+PROFILE IMPORT/EXPORT
+---------------------
+- Profiles can be exported to JSON for backup
+- Profiles can be imported from JSON for restoration
+
+WINE RUNTIME TEST (reef.exe under Wine 11.20)
+---------------------------------------------
+Result: APP STARTS AND EXITS CLEANLY (exit 0).
+- Startup diagnostics event written.
+- Portable layout created next to the executable:
+    Config/reef-config.json
+    Data/
+    Logs/Diagnostics/ (jsonl + human-readable)
+    Logs/Sessions/
+    Logs/Exports/
+    Logs/TestNotes/
+
+PORTABLE MARKER TEST
+--------------------
+reef.exe + portable.marker in one directory,
+run with no REEF_PORTABLE_ROOT:
+  => portable mode detected via marker file
+  => Config/, Data/, Logs/{Diagnostics,Sessions,Exports,TestNotes}
+     all created next to reef.exe
+  => drive-letter independent (root derived from current_exe().parent())
+
+REEF_PORTABLE_ROOT OVERRIDE TEST
+--------------------------------
+Running with REEF_PORTABLE_ROOT=/tmp/opencode/wine-test:
+  => root derived from the env override
+  => all directories + reef-config.json + diagnostics logs created there
+  => no fallback to %APPDATA% or user home
+
+REMAINING LIMITATIONS
+---------------------
+1. Clippy: `-D warnings` does not pass; pre-existing warnings documented
+   above (mostly reef-engine parser cosmetics).
+2. Arbitrary terminal access: the no-startup-config-write safety guard
+   covers Reef-managed command paths only. Raw keystrokes typed by the user
+   cannot be fully guarded. This is stated transparently in README.txt and
+   DIAGNOSTICS-README.txt; there is no re-enable setting.
+3. Terminal is request/response (no streaming PTY); returned output bounded
+   at 1 MiB per command; backend recording captures full output.
+4. Wine GUI runtime testing may fail in wgpui's `mono_sprites` shader
+   (vkd3d `Shader model 5.1+ resource array`); `WGPU_BACKEND=vulkan`/`gl`
+   did not help. This is independent of app code.
+5. SSH host-key verification cannot be disabled (by design).
+6. No GUI validation of connected device reachability beyond the session
+   layer; connection errors are surfaced as errors.
+7. The diagnostics ZIP export is client-side (ZIP crate) and excludes
+   Logs/Exports to avoid nesting.
+
+DISTRIBUTION ARTIFACTS
+----------------------
+dist/Reef-USB/            - portable directory (see directory listing below)
+dist/Reef-USB.zip         - zip archive of the portable directory
+
+dist/Reef-USB contents:
+  Reef.exe
+  portable.marker
+  README.txt
+  TEST-CHECKLIST.txt
+  TEST-REPORT.txt
+  DIAGNOSTICS-README.txt
+  Config/reef-config.json
+  Data/            (empty, ready for use)
+  Logs/Diagnostics/
+  Logs/Sessions/
+  Logs/Exports/
+  Logs/TestNotes/
